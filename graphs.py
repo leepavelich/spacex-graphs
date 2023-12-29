@@ -1,5 +1,6 @@
 import re
 import requests
+import datetime
 from bs4 import BeautifulSoup
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -10,6 +11,11 @@ urls = [
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2010%E2%80%932019)",
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches",
 ]
+
+
+def month_to_int(month_name):
+    datetime_object = datetime.datetime.strptime(month_name, "%b")
+    return datetime_object.month
 
 
 def fetch_and_parse(url):
@@ -26,12 +32,22 @@ def fetch_and_parse(url):
         rows = table.find_all("tr")
         for row in rows:
             cols = row.find_all("td")
-            if len(cols) > 6:  # Check if the row has sufficient data
-                # Extract year, orbit, and payload mass
-                date = cols[0].text.strip()
-                day = date.split()[0]
-                month = date.split()[1]
-                year = date.split()[-1][:4]
+            if len(cols) > 6:
+                date_col = cols[0].get_text(separator=" ", strip=True)
+                date_match = re.search(r"(\d{1,2})\s+(\w+)\s*(\d{4})", date_col)
+                time_match = re.search(r"(\d{2}):(\d{2})", date_col)
+
+                day, month_name, year = date_match.groups()
+                month = month_to_int(month_name[:3])
+                day, year = int(day), int(year)
+                date = datetime.date(year, month, day)
+
+                hour, minute = time_match.groups()
+                hour, minute = int(hour), int(minute)
+                time = datetime.time(hour, minute)
+
+                datetime_launch = datetime.datetime.combine(date, time)
+
                 payload = cols[3].text.strip()
                 payload_mass = (
                     cols[4].text.strip().split()[0]
@@ -42,7 +58,7 @@ def fetch_and_parse(url):
                 payload_mass = "".join(filter(str.isdigit, payload_mass))
                 payload_mass = int(payload_mass) if payload_mass.isdigit() else 0
 
-                data.append((year, orbit, payload, payload_mass))
+                data.append((year, orbit, payload, payload_mass, datetime_launch))
     return data
 
 
@@ -92,20 +108,15 @@ for url in urls:
     all_data.extend(fetch_and_parse(url))
 
 # Convert data into a DataFrame
-df = pd.DataFrame(all_data, columns=["Year", "Orbit", "Payload", "PayloadMass"])
+df = pd.DataFrame(
+    all_data, columns=["Year", "Orbit", "Payload", "PayloadMass", "DateTime"]
+)
 
 df["Orbit"] = df.apply(lambda x: categorize_starlink(x["Payload"], x["Orbit"]), axis=1)
 df["Orbit"] = df["Orbit"].apply(clean_orbit_category)
 
 # Dirty hacks
-df.iloc[92, 3] = 5500  # Halway between 5000 and 6000
-
-# Plotting
-grouped_data = df.groupby(["Year", "Orbit"]).sum().reset_index()
-
-pivot_df = grouped_data.pivot(
-    index="Year", columns="Orbit", values="PayloadMass"
-).fillna(0)
+df.iloc[92, 3] = 5500  # Halfway between 5000 and 6000
 
 # Define a color map that corresponds to the categories in the example graph
 color_map = {
@@ -128,18 +139,63 @@ ordered_columns = [
     "Heliocentric",
     "Other",
 ]
-pivot_df = pivot_df[ordered_columns]
 
-pivot_df.plot(
-    kind="bar",
-    stacked=True,
-    color=[color_map[col] for col in ordered_columns],
-    figsize=(10, 7),
+payload_mass_by_year_orbit = (
+    df.drop(columns="DateTime").groupby(["Year", "Orbit"]).sum().reset_index()
 )
-plt.title("Payload Mass to Type of Orbit")
-plt.xlabel("Year")
-plt.ylabel("Payload Mass (kg)")
-plt.legend(title="Orbit Type")
-plt.ticklabel_format(style="plain", axis="y")
-plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(x):,}"))
+
+# Normalize the 'DateTime' to start from the first day of the year
+df["NormalizedDateTime"] = df["DateTime"].apply(lambda dt: dt.replace(year=1900))
+df.sort_values(by="DateTime", inplace=True)
+df["CumulativePayloadMass"] = df.groupby("Year")["PayloadMass"].transform(
+    pd.Series.cumsum
+)
+
+pivot_df = payload_mass_by_year_orbit.pivot(
+    index="Year", columns="Orbit", values="PayloadMass"
+).fillna(0)[ordered_columns]
+
+
+# Plotting Stacked Bar Chart
+fig1, ax1 = plt.subplots(figsize=(10, 7))
+pivot_df.plot(
+    kind="bar", stacked=True, color=[color_map[col] for col in ordered_columns], ax=ax1
+)
+ax1.set_title("Payload Mass to Type of Orbit by Year")
+ax1.set_xlabel("Year")
+ax1.set_ylabel("Payload Mass (kg)")
+ax1.legend(title="Orbit Type")
+ax1.tick_params(axis="x", rotation=45)
+ax1.ticklabel_format(style="plain", axis="y")
+ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(x):,}"))
+
+# Plotting Cumulative Line Chart
+
+df["DateTime"] = pd.to_datetime(df["DateTime"])
+df["DayOfYear"] = df["DateTime"].dt.dayofyear
+df_filtered = df[df["Year"] >= 2017]
+
+
+fig2, ax2 = plt.subplots(figsize=(10, 7))
+for year, group_data in df_filtered.groupby("Year"):
+    # Convert 'NormalizedDateTime' to a number of days since the start of the year
+    group_data["DayOfYear"] = group_data["NormalizedDateTime"].apply(
+        lambda dt: (dt - datetime.datetime(1900, 1, 1)).days + 1
+    )
+    ax2.plot(
+        group_data["DayOfYear"],
+        group_data["CumulativePayloadMass"],
+        label=year,
+        drawstyle="steps-post",
+    )
+
+ax2.set_title("Cumulative Payload Mass to Orbit By Year")
+ax2.set_xlabel("Day of the Year")
+ax2.set_ylabel("Cumulative Payload Mass (kg)")
+ax2.legend(title="Year")
+ax2.grid(True)
+ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(x):,}"))
+
+
+# Show all figures at once.
 plt.show()
