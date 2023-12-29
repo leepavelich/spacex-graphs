@@ -1,18 +1,15 @@
+"""Module that generates graphs from Wikipedia of SpaceX mass-to-orbit launches"""
+import os
+import datetime
 import re
 import requests
-import datetime
-import os
 from bs4 import BeautifulSoup
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
-# Define the output directory
-output_dir = "outputs"
-
-# Check if the directory exists, and create it if it does not
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+OUTPUT_DIR = "outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # URLs of the Wikipedia pages
 urls = [
@@ -22,19 +19,17 @@ urls = [
 
 
 def month_to_int(month_name):
+    """Converts a month name to its corresponding integer"""
     datetime_object = datetime.datetime.strptime(month_name, "%b")
     return datetime_object.month
 
 
 def fetch_and_parse(url):
-    # Fetch the HTML content
-    response = requests.get(url)
+    """Fetches and parses the Wikipedia page at the given URL"""
+    response = requests.get(url, timeout=10)
     soup = BeautifulSoup(response.content, "html.parser")
-
-    # Find the tables containing launch data
     tables = soup.findAll("table", {"class": "wikitable plainrowheaders collapsible"})
 
-    # Parse the tables and extract relevant data
     data = []
     for table in tables:
         rows = table.find_all("tr")
@@ -71,7 +66,7 @@ def fetch_and_parse(url):
 
 
 def clean_orbit_category(orbit):
-    # Remove any square brackets and the contents inside
+    """Cleans the orbit category by removing square brackets and mapping to a category"""
     orbit_cleaned = re.sub(r"\[.*?\]", "", orbit)
     orbit_cleaned = orbit_cleaned.strip()
 
@@ -105,9 +100,23 @@ def clean_orbit_category(orbit):
 
 
 def categorize_starlink(payload, orbit):
+    """Categorizes the orbit as Starlink if the payload contains 'Starlink'"""
     if "Starlink" in payload:
         return f"{orbit} (Starlink)"
     return orbit
+
+
+def create_figure(title, xlabel, ylabel, size=(10, 7)):
+    """Creates a figure with the given title, x label, and y label"""
+    fig, ax = plt.subplots(figsize=size)
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True)
+    ax.tick_params(axis="x", rotation=45)
+    ax.ticklabel_format(style="plain", axis="y")
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(x):,}"))
+    return fig, ax
 
 
 # # Fetch and parse data from both Wikipedia pages
@@ -115,7 +124,6 @@ all_data = []
 for url in urls:
     all_data.extend(fetch_and_parse(url))
 
-# Convert data into a DataFrame
 df = pd.DataFrame(
     all_data, columns=["Year", "Orbit", "Payload", "PayloadMass", "DateTime"]
 )
@@ -165,19 +173,15 @@ pivot_df = payload_mass_by_year_orbit.pivot(
 
 
 # Plotting Stacked Bar Chart
-fig1, ax1 = plt.subplots(figsize=(10, 7))
+fig1, ax1 = create_figure(
+    "Payload Mass to Type of Orbit by Year", "Year", "Payload Mass (kg)"
+)
 pivot_df.plot(
     kind="bar", stacked=True, color=[color_map[col] for col in ordered_columns], ax=ax1
 )
-ax1.set_title("Payload Mass to Type of Orbit by Year")
-ax1.set_xlabel("Year")
-ax1.set_ylabel("Payload Mass (kg)")
 ax1.legend(title="Orbit Type")
-ax1.tick_params(axis="x", rotation=45)
-ax1.ticklabel_format(style="plain", axis="y")
-ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(x):,}"))
 fig1.savefig(
-    os.path.join(output_dir, "payload_mass_to_orbit_by_year.svg"), format="svg"
+    os.path.join(OUTPUT_DIR, "payload_mass_to_orbit_by_year.svg"), format="svg"
 )
 
 # Plotting Cumulative Line Chart
@@ -187,7 +191,11 @@ df["DayOfYear"] = df["DateTime"].dt.dayofyear
 df_filtered = df[df["Year"] >= 2017]
 
 
-fig2, ax2 = plt.subplots(figsize=(10, 7))
+fig2, ax2 = create_figure(
+    "Cumulative Payload Mass to Orbit By Year",
+    "Day of the Year",
+    "Cumulative Payload Mass (kg)",
+)
 for year, group_data in df_filtered.groupby("Year"):
     # Convert 'NormalizedDateTime' to a number of days since the start of the year
     group_data["DayOfYear"] = group_data["NormalizedDateTime"].apply(
@@ -200,15 +208,9 @@ for year, group_data in df_filtered.groupby("Year"):
         drawstyle="steps-post",
     )
 
-ax2.set_title("Cumulative Payload Mass to Orbit By Year")
-ax2.set_xlabel("Day of the Year")
-ax2.set_ylabel("Cumulative Payload Mass (kg)")
 ax2.legend(title="Year")
-ax2.grid(True)
-ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(x):,}"))
 fig2.savefig(
-    os.path.join(output_dir, "cumulative_payload_mass_to_orbit.svg"), format="svg"
+    os.path.join(OUTPUT_DIR, "cumulative_payload_mass_to_orbit.svg"), format="svg"
 )
 
-# Show all figures at once.
 plt.show()
