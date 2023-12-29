@@ -186,6 +186,28 @@ fig1.savefig(
 
 # Plotting Cumulative Line Chart
 
+# Add an initial entry for each year
+initial_entries = []
+unique_years = df["Year"].unique()
+for year in unique_years:
+    if year >= 2017:  # Condition to only add rows for years 2017 and onwards
+        initial_entries.append(
+            {
+                "Year": year,
+                "Orbit": "",
+                "Payload": "",
+                "PayloadMass": 0,
+                "DateTime": datetime.datetime(year, 1, 1),
+                "NormalizedDateTime": datetime.datetime(
+                    1900, 1, 1
+                ),  # Normalized to year 1900
+                "CumulativePayloadMass": 0,  # Explicitly state cumulative mass as 0
+            }
+        )
+
+# Convert initial_entries to a DataFrame and concatenate with the main DataFrame
+initial_df = pd.DataFrame(initial_entries)
+df = pd.concat([initial_df, df], ignore_index=True)
 df["DateTime"] = pd.to_datetime(df["DateTime"])
 df["DayOfYear"] = df["DateTime"].dt.dayofyear
 df_filtered = df[df["Year"] >= 2017]
