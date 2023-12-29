@@ -1,10 +1,18 @@
 import re
 import requests
 import datetime
+import os
 from bs4 import BeautifulSoup
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+
+# Define the output directory
+output_dir = "outputs"
+
+# Check if the directory exists, and create it if it does not
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 # URLs of the Wikipedia pages
 urls = [
@@ -168,6 +176,9 @@ ax1.legend(title="Orbit Type")
 ax1.tick_params(axis="x", rotation=45)
 ax1.ticklabel_format(style="plain", axis="y")
 ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(x):,}"))
+fig1.savefig(
+    os.path.join(output_dir, "payload_mass_to_orbit_by_year.svg"), format="svg"
+)
 
 # Plotting Cumulative Line Chart
 
@@ -195,7 +206,9 @@ ax2.set_ylabel("Cumulative Payload Mass (kg)")
 ax2.legend(title="Year")
 ax2.grid(True)
 ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(x):,}"))
-
+fig2.savefig(
+    os.path.join(output_dir, "cumulative_payload_mass_to_orbit.svg"), format="svg"
+)
 
 # Show all figures at once.
 plt.show()
