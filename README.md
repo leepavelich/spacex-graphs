@@ -34,7 +34,7 @@ To generate the analysis graphs, run the following command:
 python3 graphs.py
 ```
 
-The script will produce two SVG files in the outputs directory:
+The script will produce two SVG files in the outputs directory if passed the `--output` command line arg:
 
 - `payload_mass_to_orbit_by_year.svg`: A bar chart showing the payload mass sent to various types of orbit by year.
 - `cumulative_payload_mass_to_orbit.svg`: A line chart displaying the cumulative payload mass sent to orbit over the span of each year starting from 2017.
