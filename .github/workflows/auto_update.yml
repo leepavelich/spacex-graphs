@@ -28,9 +28,8 @@ jobs:
         run: python3 graphs.py --output
 
       - name: Commit and Push Changes
-        run: |
-          uses: stefanzweifel/git-auto-commit-action@v4
-          with:
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
           commit_message: Update graphs by scheduler
           branch: ${{ github.ref }}
           file_pattern: outputs/*.svg
