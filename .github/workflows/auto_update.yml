@@ -25,25 +25,10 @@ jobs:
       - name: Run Script
         run: python3 graphs.py --output
 
-      - name: Create Issue on Failure
-        if: failure() && steps.script.outcome == 'failure'
-        uses: actions/github-script@v5
-        with:
-          script: |
-            const issueTitle = "Automated Graph Update Failed";
-            const issueBody = `The scheduled graph update failed. Please check the action logs: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: issueTitle,
-                body: issueBody
-            });
-
       - name: Commit and Push Changes
         run: |
-          git config --global user.name 'Lee Pavelich'
-          git config --global user.email 'leepavelich@gmail.com'
-          git add outputs/*.svg
-          git commit -m "Update graphs by scheduler"
-          # Pushes to the current branch
-          git push
+          uses: stefanzweifel/git-auto-commit-action@v4
+          with:
+          commit_message: Update graphs by scheduler
+          branch: ${{ github.ref }}
+          file_pattern: outputs/*.svg
