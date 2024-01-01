@@ -19,6 +19,9 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install Bash
+        run: apk add --no-cache bash
+
       - name: Run Script
         run: python3 graphs.py --output
 
