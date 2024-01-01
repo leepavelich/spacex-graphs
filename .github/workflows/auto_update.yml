@@ -1,0 +1,49 @@
+name: Auto Update Graphs
+
+on:
+  schedule:
+    - cron: "*/10 * * * *" # Runs at 00:00 UTC every 4 days
+
+jobs:
+  update-graphs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python 3.11.5
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.11.5"
+
+      - name: Install Dependencies
+        run: |
+          python3 -m pip3 install --upgrade pip
+          pip3 install -r requirements.txt
+
+      - name: Run Script
+        run: python3 graphs.py --output
+
+      - name: Create Issue on Failure
+        if: failure() && steps.script.outcome == 'failure'
+        uses: actions/github-script@v5
+        with:
+          script: |
+            const issueTitle = "Automated Graph Update Failed";
+            const issueBody = `The scheduled graph update failed. Please check the action logs: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: issueTitle,
+                body: issueBody
+            });
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name 'Lee Pavelich'
+          git config --global user.email 'leepavelich@gmail.com'
+          git add outputs/*.svg
+          git commit -m "Update graphs by scheduler"
+          # Pushes to the current branch
+          git push
