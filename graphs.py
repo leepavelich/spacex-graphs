@@ -2,6 +2,7 @@
 import os
 import datetime
 import re
+import argparse
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -160,6 +161,56 @@ payload_mass_by_year_orbit = (
     df.drop(columns="DateTime").groupby(["Year", "Orbit"]).sum().reset_index()
 )
 
+
+def plot_payload_mass_to_orbit_by_year():
+    """Plots the payload mass to orbit by year"""
+    fig, ax = create_figure(
+        "Payload Mass to Type of Orbit by Year", "Year", "Payload Mass (kg)"
+    )
+    pivot_df = payload_mass_by_year_orbit.pivot(
+        index="Year", columns="Orbit", values="PayloadMass"
+    ).fillna(0)[ordered_columns]
+    pivot_df.plot(
+        kind="bar",
+        stacked=True,
+        color=[color_map[col] for col in ordered_columns],
+        ax=ax,
+    )
+    ax.legend(title="Orbit Type")
+    return fig
+
+
+def plot_cumulative_payload_mass_to_orbit(_df_filtered):
+    """Plots the cumulative payload mass to orbit by year"""
+    fig, ax = create_figure(
+        "Cumulative Payload Mass to Orbit By Year",
+        "Day of the Year",
+        "Cumulative Payload Mass (kg)",
+    )
+    for _year, group_data in _df_filtered.groupby("Year"):
+        group_data["DayOfYear"] = group_data["NormalizedDateTime"].apply(
+            lambda dt: (dt - datetime.datetime(1900, 1, 1)).days + 1
+        )
+        ax.plot(
+            group_data["DayOfYear"],
+            group_data["CumulativePayloadMass"],
+            label=_year,
+            drawstyle="steps-post",
+        )
+    ax.legend(title="Year")
+    return fig
+
+
+def save_plots(fig1, fig2):
+    """Saves the plots as SVG files"""
+    fig1.savefig(
+        os.path.join(OUTPUT_DIR, "payload_mass_to_orbit_by_year.svg"), format="svg"
+    )
+    fig2.savefig(
+        os.path.join(OUTPUT_DIR, "cumulative_payload_mass_to_orbit.svg"), format="svg"
+    )
+
+
 # Normalize the 'DateTime' to start from the first day of the year
 df["NormalizedDateTime"] = df["DateTime"].apply(lambda dt: dt.replace(year=1900))
 df.sort_values(by="DateTime", inplace=True)
@@ -167,24 +218,6 @@ df["CumulativePayloadMass"] = df.groupby("Year")["PayloadMass"].transform(
     pd.Series.cumsum
 )
 
-pivot_df = payload_mass_by_year_orbit.pivot(
-    index="Year", columns="Orbit", values="PayloadMass"
-).fillna(0)[ordered_columns]
-
-
-# Plotting Stacked Bar Chart
-fig1, ax1 = create_figure(
-    "Payload Mass to Type of Orbit by Year", "Year", "Payload Mass (kg)"
-)
-pivot_df.plot(
-    kind="bar", stacked=True, color=[color_map[col] for col in ordered_columns], ax=ax1
-)
-ax1.legend(title="Orbit Type")
-fig1.savefig(
-    os.path.join(OUTPUT_DIR, "payload_mass_to_orbit_by_year.svg"), format="svg"
-)
-
-# Plotting Cumulative Line Chart
 
 # Add an initial entry for each year
 initial_entries = []
@@ -213,26 +246,22 @@ df["DayOfYear"] = df["DateTime"].dt.dayofyear
 df_filtered = df[df["Year"] >= 2017]
 
 
-fig2, ax2 = create_figure(
-    "Cumulative Payload Mass to Orbit By Year",
-    "Day of the Year",
-    "Cumulative Payload Mass (kg)",
-)
-for year, group_data in df_filtered.groupby("Year"):
-    # Convert 'NormalizedDateTime' to a number of days since the start of the year
-    group_data["DayOfYear"] = group_data["NormalizedDateTime"].apply(
-        lambda dt: (dt - datetime.datetime(1900, 1, 1)).days + 1
-    )
-    ax2.plot(
-        group_data["DayOfYear"],
-        group_data["CumulativePayloadMass"],
-        label=year,
-        drawstyle="steps-post",
-    )
+def main(output):
+    """Main function that generates and optionally outputs the plots"""
+    fig1 = plot_payload_mass_to_orbit_by_year()
+    fig2 = plot_cumulative_payload_mass_to_orbit(df_filtered)
+    if output:
+        save_plots(fig1, fig2)
+    else:
+        plt.show()
 
-ax2.legend(title="Year")
-fig2.savefig(
-    os.path.join(OUTPUT_DIR, "cumulative_payload_mass_to_orbit.svg"), format="svg"
-)
 
-plt.show()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Generate and optionally output plots as SVG."
+    )
+    parser.add_argument(
+        "--output", action="store_true", help="Output the plots as SVG files"
+    )
+    args = parser.parse_args()
+    main(args.output)
