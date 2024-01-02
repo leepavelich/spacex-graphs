@@ -31,3 +31,5 @@ jobs:
           commit_message: Update graphs by scheduler
           branch: ${{ github.ref }}
           file_pattern: outputs/*.svg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
