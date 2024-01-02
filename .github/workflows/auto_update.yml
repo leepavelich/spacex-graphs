@@ -10,7 +10,9 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MY_PAT }}
 
       - name: Set up Python
         uses: actions/setup-python@v2
@@ -31,5 +33,3 @@ jobs:
           commit_message: Update graphs by scheduler
           branch: ${{ github.ref }}
           file_pattern: outputs/*.svg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
