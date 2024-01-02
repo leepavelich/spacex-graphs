@@ -3,6 +3,7 @@ name: Auto Update Graphs
 on:
   schedule:
     - cron: "*/2 * * * *" # Runs at 00:00 UTC every 4 days
+  workflow_dispatch:
 
 jobs:
   update-graphs:
