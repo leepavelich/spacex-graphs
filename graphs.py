@@ -246,19 +246,37 @@ def plot_cumulative_payload_mass_to_orbit(_df_filtered):
     )
     df_extended = add_end_of_period_entries(_df_filtered)
 
+    colors = [
+        "red",
+        "green",
+        "blue",
+        "orange",
+        "purple",
+        "pink",
+        "lightblue",
+        "lightgreen",
+    ]
+
+    sorted_years = sorted(df_extended["Year"].unique(), reverse=True)
+    year_color_map = {year: color for year, color in zip(sorted_years, colors)}
+
     for year, group_data in df_extended.groupby("Year"):
         group_data = group_data.sort_values("DateTime")
         group_data["DayOfYear"] = group_data["DateTime"].dt.dayofyear
         cumulative_mass = group_data["PayloadMass"].cumsum()
 
+        # Get the color for the year
+        color = year_color_map.get(year, "grey")  # Default to grey if no color assigned
+
         ax.plot(
             group_data["DayOfYear"],
             cumulative_mass,
             label=str(year),
+            color=color,  # Use the color from the map
             drawstyle="steps-post",
         )
 
-        ax.legend(title="Year")
+    ax.legend(title="Year", loc="upper left")
 
     # Set the x-axis ticks to the first of each month
     months_to_label = [datetime.datetime(2020, month, 1) for month in range(1, 13, 2)]
@@ -272,7 +290,7 @@ def plot_cumulative_payload_mass_to_orbit(_df_filtered):
     else:
         ax.set_xlim(-14, 365 + 7)
 
-    plt.tight_layout()  # Adjust the layout
+    plt.tight_layout()
     return fig
 
 
