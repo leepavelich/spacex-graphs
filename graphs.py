@@ -107,6 +107,44 @@ def categorize_starlink(payload, orbit):
     return orbit
 
 
+def add_end_of_period_entries(df):
+    """
+    For each year in the DataFrame, this function adds an entry at the end of the period
+    (end of the year or current day if it's the current year) with the last known cumulative payload mass.
+    """
+    current_year = datetime.datetime.now().year
+    current_day_of_year = datetime.datetime.now().timetuple().tm_yday
+    end_of_period_entries = []
+
+    for year in df["Year"].unique():
+        last_entry_for_year = df[df["Year"] == year].iloc[-1]
+        last_cumulative_mass = last_entry_for_year["CumulativePayloadMass"]
+
+        # If it's the current year, use the current day of the year
+        if year == current_year:
+            period_end_date = datetime.datetime(year, 1, 1) + datetime.timedelta(
+                days=current_day_of_year - 1
+            )
+        else:  # Otherwise, use the last day of the year
+            period_end_date = datetime.datetime(year, 12, 31)
+
+        end_of_period_entries.append(
+            {
+                "Year": year,
+                "PayloadMass": 0,  # No additional payload, so mass is 0
+                "DateTime": period_end_date,
+                "NormalizedDateTime": period_end_date.replace(year=1900),
+                "CumulativePayloadMass": last_cumulative_mass,
+                "DayOfYear": period_end_date.timetuple().tm_yday,
+            }
+        )
+
+    # Append the end-of-period entries to the original DataFrame
+    return pd.concat(
+        [df, pd.DataFrame(end_of_period_entries)], ignore_index=True
+    ).sort_values(by="DateTime")
+
+
 def create_figure(title, xlabel, ylabel, size=(10, 7)):
     """Creates a figure with the given title, x label, and y label"""
     fig, ax = plt.subplots(figsize=size)
@@ -187,16 +225,20 @@ def plot_cumulative_payload_mass_to_orbit(_df_filtered):
         "Day of the Year",
         "Cumulative Payload Mass (kg)",
     )
-    for _year, group_data in _df_filtered.groupby("Year"):
-        group_data["DayOfYear"] = group_data["NormalizedDateTime"].apply(
-            lambda dt: (dt - datetime.datetime(1900, 1, 1)).days + 1
-        )
+    df_extended = add_end_of_period_entries(_df_filtered)
+
+    for year, group_data in df_extended.groupby("Year"):
+        group_data = group_data.sort_values("DateTime")
+        group_data["DayOfYear"] = group_data["DateTime"].dt.dayofyear
+        cumulative_mass = group_data["PayloadMass"].cumsum()
+
         ax.plot(
             group_data["DayOfYear"],
-            group_data["CumulativePayloadMass"],
-            label=_year,
+            cumulative_mass,
+            label=str(year),
             drawstyle="steps-post",
         )
+
     ax.legend(title="Year")
     return fig
 
