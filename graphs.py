@@ -208,13 +208,31 @@ def plot_payload_mass_to_orbit_by_year():
     pivot_df = payload_mass_by_year_orbit.pivot(
         index="Year", columns="Orbit", values="PayloadMass"
     ).fillna(0)[ordered_columns]
+
     pivot_df.plot(
         kind="bar",
         stacked=True,
         color=[color_map[col] for col in ordered_columns],
         ax=ax,
     )
+
+    # A fixed amount of padding above the bars for the annotations
+    fixed_padding = 10000
+
+    # Annotate each bar with the total payload mass for the year
+    for i, total in enumerate(pivot_df.sum(axis=1)):
+        ax.text(
+            i,
+            total + fixed_padding,
+            f"{int(total):,}",
+            ha="center",
+            va="bottom",
+            color="grey",
+            fontsize=8,
+        )
+
     ax.legend(title="Orbit Type")
+    plt.tight_layout()
     return fig
 
 
