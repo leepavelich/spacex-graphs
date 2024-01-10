@@ -1,6 +1,7 @@
 """Module that generates graphs from Wikipedia of SpaceX mass-to-orbit launches"""
 import os
 import datetime
+import calendar
 import re
 import argparse
 import requests
@@ -240,7 +241,7 @@ def plot_cumulative_payload_mass_to_orbit(_df_filtered):
     """Plots the cumulative payload mass to orbit by year"""
     fig, ax = create_figure(
         "Cumulative Payload Mass to Orbit By Year",
-        "Day of the Year",
+        "",
         "Cumulative Payload Mass (kg)",
     )
     df_extended = add_end_of_period_entries(_df_filtered)
@@ -257,7 +258,21 @@ def plot_cumulative_payload_mass_to_orbit(_df_filtered):
             drawstyle="steps-post",
         )
 
-    ax.legend(title="Year")
+        ax.legend(title="Year")
+
+    # Set the x-axis ticks to the first of each month
+    months_to_label = [datetime.datetime(2020, month, 1) for month in range(1, 13, 2)]
+    ax.set_xticks([date.timetuple().tm_yday for date in months_to_label])
+    ax.set_xticklabels([date.strftime("%b 1") for date in months_to_label], rotation=0)
+
+    # Set the x-axis limit to the maximum day of the year
+    current_year = datetime.datetime.now().year
+    if calendar.isleap(current_year):
+        ax.set_xlim(-14, 366 + 7)
+    else:
+        ax.set_xlim(-14, 365 + 7)
+
+    plt.tight_layout()  # Adjust the layout
     return fig
 
 
