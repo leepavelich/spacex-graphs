@@ -233,6 +233,7 @@ def plot_payload_mass_to_orbit_by_year():
         )
 
     ax.legend(title="Orbit Type")
+    ax.set_xlabel("")
     plt.tight_layout()
     return fig
 
