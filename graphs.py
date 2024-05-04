@@ -1,4 +1,5 @@
 """Module that generates graphs from Wikipedia of SpaceX mass-to-orbit launches"""
+
 import os
 import datetime
 import calendar
@@ -16,6 +17,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # URLs of the Wikipedia pages
 urls = [
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2010%E2%80%932019)",
+    "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2020%E2%80%932022)",
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches",
 ]
 
@@ -306,7 +308,7 @@ def save_plots(fig1, fig2):
 
 
 # Normalize the 'DateTime' to start from the first day of the year
-df["NormalizedDateTime"] = df["DateTime"].apply(lambda dt: dt.replace(year=1900))
+# df["NormalizedDateTime"] = df["DateTime"].apply(lambda dt: dt.replace(year=1900))
 df.sort_values(by="DateTime", inplace=True)
 df["CumulativePayloadMass"] = df.groupby("Year")["PayloadMass"].transform(
     pd.Series.cumsum
