@@ -1,7 +1,5 @@
 # SpaceX Mass-to-Orbit Graphs
 
-⚠️Currently paused due to [an editorial dispute](https://en.wikipedia.org/wiki/Talk:List_of_Falcon_9_and_Falcon_Heavy_launches#Please_do_not_add_Starlink_masses_when_they're_unknown) on Wikipedia
-
 This project contains a Python script that fetches data about SpaceX launches from Wikipedia, analyzes the payload mass to different orbits over the years, and provides a cumulative sum of the payload mass to orbit.
 
 ## Payload Mass to Orbit by Year
