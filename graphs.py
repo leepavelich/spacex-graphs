@@ -32,7 +32,7 @@ def fetch_and_parse(url):
     """Fetches and parses the Wikipedia page at the given URL"""
     response = requests.get(url, timeout=10)
     soup = BeautifulSoup(response.content, "html.parser")
-    tables = soup.findAll("table", {"class": "wikitable plainrowheaders collapsible"})
+    tables = soup.findAll("table", {"class": "wikitable"})
 
     data = []
     for table in tables:
