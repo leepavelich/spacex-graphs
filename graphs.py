@@ -56,11 +56,13 @@ def fetch_and_parse(url):
                 datetime_launch = datetime.datetime.combine(date, time)
 
                 payload = cols[3].text.strip()
-                payload_mass = (
-                    cols[4].text.strip().split()[0]
-                )  # Take the first number before any space
+                payload_mass = cols[4].text.strip().split()[0]  # Take the first number before any space
                 orbit = cols[5].text.strip()
+                launch_outcome = cols[7].text.strip().lower()
 
+                if "success" not in launch_outcome:
+                    continue
+                
                 # Clean the payload mass data (remove non-numeric characters)
                 payload_mass = "".join(filter(str.isdigit, payload_mass))
                 payload_mass = int(payload_mass) if payload_mass.isdigit() else 0
