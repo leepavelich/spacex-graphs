@@ -40,35 +40,37 @@ def fetch_and_parse(url):
         rows = table.find_all("tr")
         for row in rows:
             cols = row.find_all("td")
-            if len(cols) > 6:
-                date_col = cols[0].get_text(separator=" ", strip=True)
-                date_match = re.search(r"(\d{1,2})\s+(\w+)\s*(\d{4})", date_col)
-                time_match = re.search(r"(\d{2}):(\d{2})", date_col)
+            if len(cols) not in [9, 11]:
+                continue
 
-                day, month_name, year = date_match.groups()
-                month = month_to_int(month_name[:3])
-                day, year = int(day), int(year)
-                date = datetime.date(year, month, day)
+            date_col = cols[0].get_text(separator=" ", strip=True)
+            date_match = re.search(r"(\d{1,2})\s+(\w+)\s*(\d{4})", date_col)
+            time_match = re.search(r"(\d{2}):(\d{2})", date_col)
 
-                hour, minute = time_match.groups()
-                hour, minute = int(hour), int(minute)
-                time = datetime.time(hour, minute)
+            day, month_name, year = date_match.groups()
+            month = month_to_int(month_name[:3])
+            day, year = int(day), int(year)
+            date = datetime.date(year, month, day)
 
-                datetime_launch = datetime.datetime.combine(date, time)
+            hour, minute = time_match.groups()
+            hour, minute = int(hour), int(minute)
+            time = datetime.time(hour, minute)
 
-                payload = cols[3].text.strip()
-                payload_mass = cols[4].text.strip().split()[0]  # Take the first number before any space
-                orbit = cols[5].text.strip()
-                launch_outcome = cols[7].text.strip().lower()
+            datetime_launch = datetime.datetime.combine(date, time)
 
-                if "success" not in launch_outcome:
-                    payload_mass = "0"
-                
-                # Clean the payload mass data (remove non-numeric characters)
-                payload_mass = "".join(filter(str.isdigit, payload_mass))
-                payload_mass = int(payload_mass) if payload_mass.isdigit() else 0
+            payload = cols[3].text.strip()
+            payload_mass = cols[4].text.strip().split()[0]  # Take the first number before any space
+            orbit = cols[5].text.strip()
+            launch_outcome = cols[7].text.strip().lower()
 
-                data.append((year, orbit, payload, payload_mass, datetime_launch))
+            if "success" not in launch_outcome:
+                payload_mass = "0"
+
+            # Clean the payload mass data (remove non-numeric characters)
+            payload_mass = "".join(filter(str.isdigit, payload_mass))
+            payload_mass = int(payload_mass) if payload_mass.isdigit() else 0
+
+            data.append((year, orbit, payload, payload_mass, datetime_launch))
     return data
 
 
