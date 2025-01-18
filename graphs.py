@@ -19,6 +19,7 @@ urls = [
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2010%E2%80%932019)",
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2020%E2%80%932022)",
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches",
+    "https://en.wikipedia.org/wiki/List_of_Starship_launches",
 ]
 
 
@@ -61,7 +62,7 @@ def fetch_and_parse(url):
                 launch_outcome = cols[7].text.strip().lower()
 
                 if "success" not in launch_outcome:
-                    continue
+                    payload_mass = 0
                 
                 # Clean the payload mass data (remove non-numeric characters)
                 payload_mass = "".join(filter(str.isdigit, payload_mass))
