@@ -62,7 +62,7 @@ def fetch_and_parse(url):
                 launch_outcome = cols[7].text.strip().lower()
 
                 if "success" not in launch_outcome:
-                    payload_mass = 0
+                    payload_mass = "0"
                 
                 # Clean the payload mass data (remove non-numeric characters)
                 payload_mass = "".join(filter(str.isdigit, payload_mass))
