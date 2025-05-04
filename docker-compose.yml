@@ -1,0 +1,8 @@
+services:
+  graphs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./outputs:/app/outputs
+    command: ${ARGS:-}
