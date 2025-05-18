@@ -47,13 +47,19 @@ def fetch_and_parse(url):
             date_match = re.search(r"(\d{1,2})\s+(\w+)\s*(\d{4})", date_col)
             time_match = re.search(r"(\d{2}):(\d{2})", date_col)
 
+            if not date_match:
+                continue
+
             day, month_name, year = date_match.groups()
             month = month_to_int(month_name[:3])
             day, year = int(day), int(year)
             date = datetime.date(year, month, day)
 
-            hour, minute = time_match.groups()
-            hour, minute = int(hour), int(minute)
+            if time_match:
+                hour, minute = time_match.groups()
+                hour, minute = int(hour), int(minute)
+            else:
+                hour = minute = 0
             time = datetime.time(hour, minute)
 
             datetime_launch = datetime.datetime.combine(date, time)
