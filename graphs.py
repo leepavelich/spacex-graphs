@@ -18,6 +18,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 urls = [
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2010%E2%80%932019)",
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2020%E2%80%932022)",
+    "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2023)",
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches",
     "https://en.wikipedia.org/wiki/List_of_Starship_launches",
 ]
