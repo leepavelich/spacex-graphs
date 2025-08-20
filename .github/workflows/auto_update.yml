@@ -33,3 +33,6 @@ jobs:
           commit_message: Update graphs by scheduler
           branch: ${{ github.ref }}
           file_pattern: outputs/*.svg
+          commit_user_name: GitHub Actions
+          commit_user_email: actions@github.com
+          commit_author: GitHub Actions <actions@github.com>
