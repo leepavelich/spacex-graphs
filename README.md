@@ -12,15 +12,39 @@ This project contains a Python script that fetches data about SpaceX launches fr
 
 ## Setup and Installation
 
-Make sure you have Python installed on your system. This project was written using Python 3.
+### Option 1: Using Docker (Recommended)
 
-To install the required libraries, you'll need to run the following command:
+The easiest way to run this project is using Docker, which handles all dependencies automatically.
+
+#### Prerequisites
+- Docker and Docker Compose installed on your system
+
+#### Running with Docker
+
+```bash
+# Generate graphs and save as SVG files to outputs/ directory
+docker compose run graphs --output
+
+# Generate graphs and display on screen (without saving)
+docker compose run graphs
+```
+
+The Docker container will automatically:
+- Install all required dependencies
+- Mount the `outputs/` directory for saving generated graphs
+- Run the script with your specified arguments
+
+### Option 2: Local Installation
+
+If you prefer to run the script locally, make sure you have Python 3 installed on your system.
+
+To install the required libraries, run:
 
 ```bash
 pip3 install -r requirements.txt
 ```
 
-Alternatively, you can install the required libraries individually by running:
+Alternatively, you can install the required libraries individually:
 
 ```bash
 pip install requests beautifulsoup4 pandas matplotlib
@@ -28,18 +52,34 @@ pip install requests beautifulsoup4 pandas matplotlib
 
 ## Running the Script
 
-To generate the analysis graphs, run the following command:
+### With Docker
 
 ```bash
-python3 graphs.py
+# Save graphs as SVG files
+docker compose run graphs --output
+
+# Display graphs without saving
+docker compose run graphs
 ```
 
-The script will produce two SVG files in the outputs directory if passed the `--output` command line arg:
+### Without Docker
 
-- `payload_mass_to_orbit_by_year.svg`: A bar chart showing the payload mass sent to various types of orbit by year.
-- `cumulative_payload_mass_to_orbit.svg`: A line chart displaying the cumulative payload mass sent to orbit over the span of each year starting from 2017.
+```bash
+# Display graphs on screen
+python3 graphs.py
 
-Both graphs are also displayed on screen once the script finishes executing.
+# Save graphs as SVG files to outputs/ directory
+python3 graphs.py --output
+```
+
+### Output
+
+The script generates two graphs:
+
+- `payload_mass_to_orbit_by_year.svg`: A stacked bar chart showing the payload mass sent to various orbit types by year
+- `cumulative_payload_mass_to_orbit.svg`: A line chart displaying the cumulative payload mass sent to orbit starting from 2017
+
+When run with `--output`, the graphs are saved as SVG files in the `outputs/` directory. Without this flag, graphs are displayed on screen.
 
 ## Contributing
 
