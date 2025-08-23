@@ -1,27 +1,28 @@
-FROM python:3.9-alpine
+FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apk add --no-cache \
+# Install system dependencies required for matplotlib
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    musl-dev \
-    python3-dev \
-    libffi-dev \
-    openssl-dev \
-    make \
-    freetype-dev \
-    libpng-dev \
-    g++
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
+# Copy only requirements first to leverage Docker cache
 COPY requirements.txt .
 
+# Install Python dependencies
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Copy application code
+COPY graphs.py .
 
+# Create outputs directory
 RUN mkdir -p outputs
 
+# Set the entrypoint to the Python script
 ENTRYPOINT ["python3", "graphs.py"]
 
-# Default command-line arguments (can be overridden)
-# CMD ["--output"]
+# Default: no arguments (displays graphs)
+# Override with --output to save as SVG files
+CMD []
