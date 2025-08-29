@@ -30,9 +30,95 @@ def month_to_int(month_name):
     return datetime_object.month
 
 
+def fetch_and_parse_starship(url):
+    """Fetches and parses Starship launches from Wikipedia"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    response = requests.get(url, headers=headers, timeout=10)
+    soup = BeautifulSoup(response.content, "html.parser")
+    tables = soup.findAll("table", {"class": "wikitable"})
+
+    data = []
+    for table in tables:
+        rows = table.find_all("tr")
+        for row in rows:
+            cols = row.find_all("td")
+            if len(cols) != 11:
+                continue
+
+            date_col = cols[0].get_text(separator=" ", strip=True)
+            date_match = re.search(r"(\d{1,2})\s+(\w+)\s*(\d{4})", date_col)
+            time_match = re.search(r"(\d{2}):(\d{2})", date_col)
+
+            if not date_match:
+                alt_match = re.search(r"(\w+)\s+(\d{1,2}),?\s*(\d{4})", date_col)
+                if alt_match:
+                    month_name, day, year = alt_match.groups()
+                    day = int(day)
+                else:
+                    continue
+            else:
+                day, month_name, year = date_match.groups()
+                day = int(day)
+            month = month_to_int(month_name[:3])
+            year = int(year)
+            date = datetime.date(year, month, day)
+
+            if time_match:
+                hour, minute = time_match.groups()
+                hour, minute = int(hour), int(minute)
+            else:
+                hour = minute = 0
+            time = datetime.time(hour, minute)
+
+            datetime_launch = datetime.datetime.combine(date, time)
+
+            # For Starship, columns are different:
+            # Col 2: Ship version, Col 4: Payload, Col 5: Payload mass, Col 6: Orbit, Col 8: Launch outcome
+            ship_version = cols[2].text.strip()
+            payload = cols[4].text.strip()
+            payload_mass_text = cols[5].text.strip()
+            orbit = cols[6].text.strip()
+            launch_outcome = cols[8].text.strip().lower()
+
+            # Extract block version from ship (e.g., "Block 1S24" -> "Block 1")
+            block_match = re.search(r"Block\s+(\d+)", ship_version)
+            if block_match:
+                vehicle = f"Block {block_match.group(1)} Starship"
+            else:
+                vehicle = "Starship"
+
+            # Only the August 26, 2025 launch was successful so far
+            if "success" in launch_outcome:
+                # Extract mass from text like "~16,000 kg (35,000 lb)[54]"
+                mass_match = re.search(r"~?([\d,]+)\s*kg", payload_mass_text)
+                if mass_match:
+                    payload_mass = mass_match.group(1).replace(",", "")
+                    payload_mass = int(payload_mass)
+                else:
+                    payload_mass = 0
+            else:
+                payload_mass = 0
+
+            # Use "Starship Test" as payload name if no payload
+            if payload == "—" or not payload:
+                payload = "Starship Test"
+
+            data.append((year, orbit, payload, payload_mass, datetime_launch, vehicle))
+    return data
+
+
 def fetch_and_parse(url):
     """Fetches and parses the Wikipedia page at the given URL"""
-    response = requests.get(url, timeout=10)
+    # Check if this is the Starship page
+    if "Starship" in url:
+        return fetch_and_parse_starship(url)
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    response = requests.get(url, headers=headers, timeout=10)
     soup = BeautifulSoup(response.content, "html.parser")
     tables = soup.findAll("table", {"class": "wikitable"})
 
@@ -71,8 +157,12 @@ def fetch_and_parse(url):
 
             datetime_launch = datetime.datetime.combine(date, time)
 
+            # For Falcon launches: Col 1: Booster, Col 3: Payload, Col 4: Mass, Col 5: Orbit, Col 7: Outcome
+            booster = cols[1].text.strip() if len(cols) > 1 else ""
             payload = cols[3].text.strip()
-            payload_mass = cols[4].text.strip().split()[0]  # Take the first number before any space
+            payload_mass = (
+                cols[4].text.strip().split()[0]
+            )  # Take the first number before any space
             orbit = cols[5].text.strip()
             launch_outcome = cols[7].text.strip().lower()
 
@@ -83,7 +173,13 @@ def fetch_and_parse(url):
             payload_mass = "".join(filter(str.isdigit, payload_mass))
             payload_mass = int(payload_mass) if payload_mass.isdigit() else 0
 
-            data.append((year, orbit, payload, payload_mass, datetime_launch))
+            # Determine vehicle type from booster column
+            if "Heavy" in booster or "FH" in booster:
+                vehicle = "Falcon Heavy"
+            else:
+                vehicle = "Falcon 9"
+
+            data.append((year, orbit, payload, payload_mass, datetime_launch, vehicle))
     return data
 
 
@@ -116,6 +212,8 @@ def clean_orbit_category(orbit):
         "SSO (Starlink)": "SSO (Starlink)",
         "Sun-Earth L1 insertion": "Other",
         "Sun-Earth L2 injection": "Other",
+        "Transatmospheric": "Transatmospheric",
+        "—": "Transatmospheric",  # Starship test flights often have — for orbit
     }
 
     return orbit_mapping.get(orbit_cleaned, "Other")
@@ -185,7 +283,7 @@ for url in urls:
     all_data.extend(fetch_and_parse(url))
 
 df = pd.DataFrame(
-    all_data, columns=["Year", "Orbit", "Payload", "PayloadMass", "DateTime"]
+    all_data, columns=["Year", "Orbit", "Payload", "PayloadMass", "DateTime", "Vehicle"]
 )
 
 df["Orbit"] = df.apply(lambda x: categorize_starlink(x["Payload"], x["Orbit"]), axis=1)
@@ -202,6 +300,7 @@ color_map = {
     "GTO/GEO": "yellowgreen",
     "BLT": "gold",
     "Heliocentric": "wheat",
+    "Transatmospheric": "lightblue",
     "Other": "lightgray",
 }
 
@@ -213,6 +312,7 @@ ordered_columns = [
     "GTO/GEO",
     "BLT",
     "Heliocentric",
+    "Transatmospheric",
     "Other",
 ]
 
@@ -325,6 +425,42 @@ def save_plots(fig1, fig2):
     )
 
 
+def save_launches_csv(all_data):
+    """Saves all launch data to a CSV file for debugging"""
+    # Create a list of dictionaries for easier CSV writing
+    csv_data = []
+    for item in all_data:
+        # Handle both old format (5 elements) and new format (6 elements with vehicle)
+        if len(item) == 6:
+            year, orbit, payload, payload_mass, datetime_launch, vehicle = item
+        else:
+            year, orbit, payload, payload_mass, datetime_launch = item
+            vehicle = "Unknown"
+        csv_data.append(
+            {
+                "Date": datetime_launch.strftime("%Y-%m-%d"),
+                "Time (UTC)": datetime_launch.strftime("%H:%M:%S"),
+                "Year": year,
+                "Vehicle": vehicle,
+                "Payload": payload,
+                "Payload Mass (kg)": payload_mass,
+                "Orbit": orbit,
+                "Orbit Category": clean_orbit_category(orbit),
+            }
+        )
+
+    # Convert to DataFrame and sort by date
+    csv_df = pd.DataFrame(csv_data)
+    csv_df["DateTime"] = pd.to_datetime(csv_df["Date"] + " " + csv_df["Time (UTC)"])
+    csv_df = csv_df.sort_values("DateTime")
+    csv_df = csv_df.drop(columns=["DateTime"])
+
+    # Save to CSV
+    csv_path = os.path.join(OUTPUT_DIR, "spacex_launches.csv")
+    csv_df.to_csv(csv_path, index=False)
+    print(f"Launch data saved to {csv_path}")
+
+
 # Normalize the 'DateTime' to start from the first day of the year
 # df["NormalizedDateTime"] = df["DateTime"].apply(lambda dt: dt.replace(year=1900))
 df.sort_values(by="DateTime", inplace=True)
@@ -345,6 +481,7 @@ for year in unique_years:
                 "Payload": "",
                 "PayloadMass": 0,
                 "DateTime": datetime.datetime(year, 1, 1),
+                "Vehicle": "",  # Add Vehicle column for initial entries
                 "NormalizedDateTime": datetime.datetime(
                     1900, 1, 1
                 ),  # Normalized to year 1900
@@ -366,6 +503,7 @@ def main(output):
     fig2 = plot_cumulative_payload_mass_to_orbit(df_filtered)
     if output:
         save_plots(fig1, fig2)
+        save_launches_csv(all_data)
     else:
         plt.show()
 
