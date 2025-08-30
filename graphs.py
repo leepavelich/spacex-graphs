@@ -436,6 +436,10 @@ def save_launches_csv(all_data):
         else:
             year, orbit, payload, payload_mass, datetime_launch = item
             vehicle = "Unknown"
+
+        orbit_with_starlink = categorize_starlink(payload, orbit)
+        orbit_category = clean_orbit_category(orbit_with_starlink)
+
         csv_data.append(
             {
                 "Date": datetime_launch.strftime("%Y-%m-%d"),
@@ -445,7 +449,7 @@ def save_launches_csv(all_data):
                 "Payload": payload,
                 "Payload Mass (kg)": payload_mass,
                 "Orbit": orbit,
-                "Orbit Category": clean_orbit_category(orbit),
+                "Orbit Category": orbit_category,
             }
         )
 
