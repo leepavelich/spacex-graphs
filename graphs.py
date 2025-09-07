@@ -109,6 +109,40 @@ def fetch_and_parse_starship(url):
     return data
 
 
+def parse_payload_mass_text(text):
+    """Parse payload mass text from Wikipedia cell.
+
+    Handles values like:
+    - "5,000 kg"
+    - "5,000–6,000 kg" (returns the average 5,500)
+    - "5000-6000 kg" (same as above)
+    - "~16,000 kg" (returns 16000)
+    - Any footnotes or extra text are ignored
+    Returns an integer mass in kg, or 0 if not parseable.
+    """
+    if not text:
+        return 0
+
+    # Normalize dashes and strip
+    s = str(text).strip()
+    s = s.replace("\u2013", "-").replace("\u2014", "-")  # en/em dash -> hyphen
+
+    # If there's an explicit numeric range, average the bounds (hyphen/en dash or 'to')
+    range_match = re.search(r"(\d[\d,]*)\s*(?:-|to)\s*(\d[\d,]*)", s, flags=re.IGNORECASE)
+    if range_match:
+        a, b = range_match.groups()
+        a = int(a.replace(",", ""))
+        b = int(b.replace(",", ""))
+        return int(round((a + b) / 2))
+
+    # Otherwise take the first integer in the string
+    single_match = re.search(r"(\d[\d,]*)", s)
+    if single_match:
+        return int(single_match.group(1).replace(",", ""))
+
+    return 0
+
+
 def fetch_and_parse(url):
     """Fetches and parses the Wikipedia page at the given URL"""
     # Check if this is the Starship page
@@ -160,18 +194,13 @@ def fetch_and_parse(url):
             # For Falcon launches: Col 1: Booster, Col 3: Payload, Col 4: Mass, Col 5: Orbit, Col 7: Outcome
             booster = cols[1].text.strip() if len(cols) > 1 else ""
             payload = cols[3].text.strip()
-            payload_mass = (
-                cols[4].text.strip().split()[0]
-            )  # Take the first number before any space
+            payload_mass_text = cols[4].text.strip()
+            payload_mass = parse_payload_mass_text(payload_mass_text)
             orbit = cols[5].text.strip()
             launch_outcome = cols[7].text.strip().lower()
 
             if "success" not in launch_outcome:
-                payload_mass = "0"
-
-            # Clean the payload mass data (remove non-numeric characters)
-            payload_mass = "".join(filter(str.isdigit, payload_mass))
-            payload_mass = int(payload_mass) if payload_mass.isdigit() else 0
+                payload_mass = 0
 
             # Determine vehicle type from booster column
             if "Heavy" in booster or "FH" in booster:
@@ -288,9 +317,6 @@ df = pd.DataFrame(
 
 df["Orbit"] = df.apply(lambda x: categorize_starlink(x["Payload"], x["Orbit"]), axis=1)
 df["Orbit"] = df["Orbit"].apply(clean_orbit_category)
-
-# Dirty hacks
-df.iloc[92, 3] = 5500  # Halfway between 5000 and 6000
 
 # Define a color map that corresponds to the categories in the example graph
 color_map = {
