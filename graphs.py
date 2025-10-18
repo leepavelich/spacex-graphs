@@ -322,6 +322,8 @@ df["Orbit"] = df["Orbit"].apply(clean_orbit_category)
 color_map = {
     "LEO (Starlink)": "chocolate",
     "LEO (Other)": "coral",
+    "SSO (Starlink)": "darkgoldenrod",
+    "SSO (Other)": "orange",
     "MEO": "orchid",
     "GTO/GEO": "yellowgreen",
     "BLT": "gold",
@@ -334,6 +336,8 @@ color_map = {
 ordered_columns = [
     "LEO (Starlink)",
     "LEO (Other)",
+    "SSO (Starlink)",
+    "SSO (Other)",
     "MEO",
     "GTO/GEO",
     "BLT",
