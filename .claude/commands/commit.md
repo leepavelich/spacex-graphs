@@ -33,11 +33,11 @@ Follow these steps:
    <type>: <description>
    ```
 
-6. Include a brief explanation of why you chose this type and scope
+6. Provide THREE different commit message suggestions:
+   - **Option 1**: Your primary recommendation (most accurate based on the changes)
+   - **Option 2**: An alternative interpretation or style
+   - **Option 3**: A more detailed or verbose version
 
-7. Ask if the user would like to:
-   - Use this message as-is
-   - Modify it
-   - See a longer commit message with a body
+   For each option, include a brief one-line explanation of the rationale.
 
 IMPORTANT: Only analyze staged changes. If nothing is staged, inform the user and suggest they stage changes first with `git add`.
