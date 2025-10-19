@@ -31,6 +31,14 @@ jobs:
         if: steps.cache-python.outputs.cache-hit != 'true'
         run: pip install -r requirements.txt
 
+      - name: Cache Wikipedia data
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: wikipedia-cache-${{ github.run_id }}
+          restore-keys: |
+            wikipedia-cache-
+
       - name: Run Script
         run: python3 graphs.py --output
 
