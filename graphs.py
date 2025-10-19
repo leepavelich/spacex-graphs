@@ -5,6 +5,7 @@ import datetime
 import calendar
 import re
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -307,9 +308,12 @@ def create_figure(title, xlabel, ylabel, size=(10, 7)):
 
 
 # # Fetch and parse data from both Wikipedia pages
+# Use ThreadPoolExecutor to fetch all URLs concurrently
 all_data = []
-for url in urls:
-    all_data.extend(fetch_and_parse(url))
+with ThreadPoolExecutor(max_workers=5) as executor:
+    results = executor.map(fetch_and_parse, urls)
+    for result in results:
+        all_data.extend(result)
 
 df = pd.DataFrame(
     all_data, columns=["Year", "Orbit", "Payload", "PayloadMass", "DateTime", "Vehicle"]
