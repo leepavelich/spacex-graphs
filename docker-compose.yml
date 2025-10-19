@@ -5,4 +5,5 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./outputs:/app/outputs
+      - ./.cache:/app/.cache
     command: ${ARGS:-}

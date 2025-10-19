@@ -5,6 +5,8 @@ import datetime
 import calendar
 import re
 import argparse
+import json
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 import requests
 from bs4 import BeautifulSoup
@@ -13,7 +15,9 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 OUTPUT_DIR = "outputs"
+CACHE_DIR = ".cache"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 # URLs of the Wikipedia pages
 urls = [
@@ -23,6 +27,66 @@ urls = [
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches",
     "https://en.wikipedia.org/wiki/List_of_Starship_launches",
 ]
+
+
+def get_cache_key(url):
+    """Generate a cache key from URL"""
+    return hashlib.md5(url.encode()).hexdigest()
+
+
+def fetch_with_cache(url, headers):
+    """Fetch URL with ETag/Last-Modified caching support"""
+    cache_key = get_cache_key(url)
+    cache_meta_path = os.path.join(CACHE_DIR, f"{cache_key}.json")
+    cache_content_path = os.path.join(CACHE_DIR, f"{cache_key}.html")
+
+    # Load cached metadata if exists
+    cached_meta = {}
+    if os.path.exists(cache_meta_path):
+        with open(cache_meta_path, "r", encoding="utf-8") as f:
+            cached_meta = json.load(f)
+
+    # Add conditional request headers if we have cached data
+    request_headers = headers.copy()
+    if "etag" in cached_meta:
+        request_headers["If-None-Match"] = cached_meta["etag"]
+    if "last-modified" in cached_meta:
+        request_headers["If-Modified-Since"] = cached_meta["last-modified"]
+
+    # Make the request
+    response = requests.get(url, headers=request_headers, timeout=10)
+
+    # If 304 Not Modified, use cached content
+    if response.status_code == 304 and os.path.exists(cache_content_path):
+        with open(cache_content_path, "rb") as f:
+            return f.read()
+
+    # Otherwise, save new content and metadata
+    if response.status_code == 200:
+        # Save content
+        with open(cache_content_path, "wb") as f:
+            f.write(response.content)
+
+        # Save metadata
+        meta = {"url": url}
+        if "ETag" in response.headers:
+            meta["etag"] = response.headers["ETag"]
+        if "Last-Modified" in response.headers:
+            meta["last-modified"] = response.headers["Last-Modified"]
+
+        with open(cache_meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f)
+
+        return response.content
+
+    # Fallback to cached content if request failed but cache exists
+    if os.path.exists(cache_content_path):
+        with open(cache_content_path, "rb") as f:
+            return f.read()
+
+    # No cache and request failed
+    response.raise_for_status()
+    return response.content
 
 
 def month_to_int(month_name):
@@ -36,8 +100,8 @@ def fetch_and_parse_starship(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
-    response = requests.get(url, headers=headers, timeout=10)
-    soup = BeautifulSoup(response.content, "html.parser")
+    content = fetch_with_cache(url, headers)
+    soup = BeautifulSoup(content, "html.parser")
     tables = soup.findAll("table", {"class": "wikitable"})
 
     data = []
@@ -153,8 +217,8 @@ def fetch_and_parse(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
-    response = requests.get(url, headers=headers, timeout=10)
-    soup = BeautifulSoup(response.content, "html.parser")
+    content = fetch_with_cache(url, headers)
+    soup = BeautifulSoup(content, "html.parser")
     tables = soup.findAll("table", {"class": "wikitable"})
 
     data = []
