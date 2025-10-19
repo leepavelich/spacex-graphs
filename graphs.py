@@ -47,6 +47,27 @@ def get_page_name(url):
     return "Falcon current"
 
 
+def check_cache_status(url, headers):
+    """Check if URL would return 304 Not Modified without fetching content"""
+    cache_key = get_cache_key(url)
+    cache_meta_path = os.path.join(CACHE_DIR, f"{cache_key}.json")
+
+    if not os.path.exists(cache_meta_path):
+        return False
+
+    with open(cache_meta_path, "r", encoding="utf-8") as f:
+        cached_meta = json.load(f)
+
+    request_headers = headers.copy()
+    if "etag" in cached_meta:
+        request_headers["If-None-Match"] = cached_meta["etag"]
+    if "last-modified" in cached_meta:
+        request_headers["If-Modified-Since"] = cached_meta["last-modified"]
+
+    response = requests.get(url, headers=request_headers, timeout=10)
+    return response.status_code == 304
+
+
 def fetch_with_cache(url, headers):
     """Fetch URL with ETag/Last-Modified caching support"""
     cache_key = get_cache_key(url)
@@ -388,21 +409,51 @@ def create_figure(title, xlabel, ylabel, size=(10, 7)):
     return fig, ax
 
 
-# # Fetch and parse data from both Wikipedia pages
-# Use ThreadPoolExecutor to fetch all URLs concurrently
-print("Fetching Wikipedia pages:")
-all_data = []
-with ThreadPoolExecutor(max_workers=5) as executor:
-    results = executor.map(fetch_and_parse, urls)
-    for result in results:
-        all_data.extend(result)
+def can_skip_processing():
+    """Check if we can skip all processing based on cache status"""
+    # Check if data hash exists (means we've run before)
+    hash_file = os.path.join(CACHE_DIR, "data_hash.txt")
+    if not os.path.exists(hash_file):
+        return False
 
-df = pd.DataFrame(
-    all_data, columns=["Year", "Orbit", "Payload", "PayloadMass", "DateTime", "Vehicle"]
-)
+    # Check if all URLs would return 304
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
 
-df["Orbit"] = df.apply(lambda x: categorize_starlink(x["Payload"], x["Orbit"]), axis=1)
-df["Orbit"] = df["Orbit"].apply(clean_orbit_category)
+    print("Checking Wikipedia cache status...")
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        statuses = list(executor.map(lambda url: check_cache_status(url, headers), urls))
+
+    all_cached = all(statuses)
+    if all_cached:
+        print("All pages cached and data unchanged - exiting")
+    return all_cached
+
+
+# Early exit check - skip all expensive processing if nothing changed
+SKIP_PROCESSING = can_skip_processing()
+
+if not SKIP_PROCESSING:
+    # # Fetch and parse data from both Wikipedia pages
+    # Use ThreadPoolExecutor to fetch all URLs concurrently
+    print("Fetching Wikipedia pages:")
+    all_data = []
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = executor.map(fetch_and_parse, urls)
+        for result in results:
+            all_data.extend(result)
+
+    df = pd.DataFrame(
+        all_data, columns=["Year", "Orbit", "Payload", "PayloadMass", "DateTime", "Vehicle"]
+    )
+
+    df["Orbit"] = df.apply(lambda x: categorize_starlink(x["Payload"], x["Orbit"]), axis=1)
+    df["Orbit"] = df["Orbit"].apply(clean_orbit_category)
+else:
+    # Set dummy values to avoid NameError
+    all_data = []
+    df = pd.DataFrame()
 
 # Define a color map that corresponds to the categories in the example graph
 color_map = {
@@ -432,9 +483,12 @@ ordered_columns = [
     "Other",
 ]
 
-payload_mass_by_year_orbit = (
-    df.drop(columns="DateTime").groupby(["Year", "Orbit"]).sum().reset_index()
-)
+if not SKIP_PROCESSING:
+    payload_mass_by_year_orbit = (
+        df.drop(columns="DateTime").groupby(["Year", "Orbit"]).sum().reset_index()
+    )
+else:
+    payload_mass_by_year_orbit = pd.DataFrame()
 
 
 def plot_payload_mass_to_orbit_by_year():
@@ -612,44 +666,51 @@ def save_launches_csv(all_data):
     print(f"Launch data saved to {csv_path}")
 
 
-# Normalize the 'DateTime' to start from the first day of the year
-# df["NormalizedDateTime"] = df["DateTime"].apply(lambda dt: dt.replace(year=1900))
-df.sort_values(by="DateTime", inplace=True)
-df["CumulativePayloadMass"] = df.groupby("Year")["PayloadMass"].transform(
-    pd.Series.cumsum
-)
+if not SKIP_PROCESSING:
+    # Normalize the 'DateTime' to start from the first day of the year
+    # df["NormalizedDateTime"] = df["DateTime"].apply(lambda dt: dt.replace(year=1900))
+    df.sort_values(by="DateTime", inplace=True)
+    df["CumulativePayloadMass"] = df.groupby("Year")["PayloadMass"].transform(
+        pd.Series.cumsum
+    )
 
 
-# Add an initial entry for each year
-initial_entries = []
-unique_years = df["Year"].unique()
-for year in unique_years:
-    if year >= 2017:  # Condition to only add rows for years 2017 and onwards
-        initial_entries.append(
-            {
-                "Year": year,
-                "Orbit": "",
-                "Payload": "",
-                "PayloadMass": 0,
-                "DateTime": datetime.datetime(year, 1, 1),
-                "Vehicle": "",  # Add Vehicle column for initial entries
-                "NormalizedDateTime": datetime.datetime(
-                    1900, 1, 1
-                ),  # Normalized to year 1900
-                "CumulativePayloadMass": 0,  # Explicitly state cumulative mass as 0
-            }
-        )
+    # Add an initial entry for each year
+    initial_entries = []
+    unique_years = df["Year"].unique()
+    for year in unique_years:
+        if year >= 2017:  # Condition to only add rows for years 2017 and onwards
+            initial_entries.append(
+                {
+                    "Year": year,
+                    "Orbit": "",
+                    "Payload": "",
+                    "PayloadMass": 0,
+                    "DateTime": datetime.datetime(year, 1, 1),
+                    "Vehicle": "",  # Add Vehicle column for initial entries
+                    "NormalizedDateTime": datetime.datetime(
+                        1900, 1, 1
+                    ),  # Normalized to year 1900
+                    "CumulativePayloadMass": 0,  # Explicitly state cumulative mass as 0
+                }
+            )
 
-# Convert initial_entries to a DataFrame and concatenate with the main DataFrame
-initial_df = pd.DataFrame(initial_entries)
-df = pd.concat([initial_df, df], ignore_index=True)
-df["DateTime"] = pd.to_datetime(df["DateTime"])
-df["DayOfYear"] = df["DateTime"].dt.dayofyear
-df_filtered = df[df["Year"] >= 2017]
+    # Convert initial_entries to a DataFrame and concatenate with the main DataFrame
+    initial_df = pd.DataFrame(initial_entries)
+    df = pd.concat([initial_df, df], ignore_index=True)
+    df["DateTime"] = pd.to_datetime(df["DateTime"])
+    df["DayOfYear"] = df["DateTime"].dt.dayofyear
+    df_filtered = df[df["Year"] >= 2017]
+else:
+    df_filtered = pd.DataFrame()
 
 
 def main(output):
     """Main function that generates and optionally outputs the plots"""
+    # Exit early if we already determined nothing changed
+    if SKIP_PROCESSING:
+        return
+
     # Check if data has changed - if not, skip regeneration when outputting
     if output and not has_data_changed(all_data):
         print("No changes detected in launch data - skipping graph regeneration")
