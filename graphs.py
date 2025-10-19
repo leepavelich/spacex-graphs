@@ -34,11 +34,25 @@ def get_cache_key(url):
     return hashlib.md5(url.encode()).hexdigest()
 
 
+def get_page_name(url):
+    """Extract a readable page name from Wikipedia URL"""
+    if "Starship" in url:
+        return "Starship launches"
+    if "2010" in url:
+        return "Falcon 2010-2019"
+    if "2020" in url:
+        return "Falcon 2020-2022"
+    if "2023" in url:
+        return "Falcon 2023"
+    return "Falcon current"
+
+
 def fetch_with_cache(url, headers):
     """Fetch URL with ETag/Last-Modified caching support"""
     cache_key = get_cache_key(url)
     cache_meta_path = os.path.join(CACHE_DIR, f"{cache_key}.json")
     cache_content_path = os.path.join(CACHE_DIR, f"{cache_key}.html")
+    page_name = get_page_name(url)
 
     # Load cached metadata if exists
     cached_meta = {}
@@ -58,11 +72,13 @@ def fetch_with_cache(url, headers):
 
     # If 304 Not Modified, use cached content
     if response.status_code == 304 and os.path.exists(cache_content_path):
+        print(f"  ✓ {page_name} (cached)")
         with open(cache_content_path, "rb") as f:
             return f.read()
 
     # Otherwise, save new content and metadata
     if response.status_code == 200:
+        print(f"  ↓ {page_name} (downloaded)")
         # Save content
         with open(cache_content_path, "wb") as f:
             f.write(response.content)
@@ -81,6 +97,7 @@ def fetch_with_cache(url, headers):
 
     # Fallback to cached content if request failed but cache exists
     if os.path.exists(cache_content_path):
+        print(f"  ! {page_name} (using cached - request failed)")
         with open(cache_content_path, "rb") as f:
             return f.read()
 
@@ -373,6 +390,7 @@ def create_figure(title, xlabel, ylabel, size=(10, 7)):
 
 # # Fetch and parse data from both Wikipedia pages
 # Use ThreadPoolExecutor to fetch all URLs concurrently
+print("Fetching Wikipedia pages:")
 all_data = []
 with ThreadPoolExecutor(max_workers=5) as executor:
     results = executor.map(fetch_and_parse, urls)
