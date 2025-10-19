@@ -523,6 +523,37 @@ def save_plots(fig1, fig2):
     )
 
 
+def compute_data_hash(data):
+    """Compute a hash of the launch data for change detection"""
+    # Convert data to a sorted, stable string representation
+    data_str = json.dumps(sorted(data), sort_keys=True, default=str)
+    return hashlib.sha256(data_str.encode()).hexdigest()
+
+
+def has_data_changed(data):
+    """Check if data has changed since last run"""
+    hash_file = os.path.join(CACHE_DIR, "data_hash.txt")
+    new_hash = compute_data_hash(data)
+
+    # If hash file doesn't exist, data has "changed"
+    if not os.path.exists(hash_file):
+        with open(hash_file, "w", encoding="utf-8") as f:
+            f.write(new_hash)
+        return True
+
+    # Compare with stored hash
+    with open(hash_file, "r", encoding="utf-8") as f:
+        old_hash = f.read().strip()
+
+    if old_hash != new_hash:
+        # Update hash file
+        with open(hash_file, "w", encoding="utf-8") as f:
+            f.write(new_hash)
+        return True
+
+    return False
+
+
 def save_launches_csv(all_data):
     """Saves all launch data to a CSV file for debugging"""
     # Create a list of dictionaries for easier CSV writing
@@ -601,11 +632,17 @@ df_filtered = df[df["Year"] >= 2017]
 
 def main(output):
     """Main function that generates and optionally outputs the plots"""
+    # Check if data has changed - if not, skip regeneration when outputting
+    if output and not has_data_changed(all_data):
+        print("No changes detected in launch data - skipping graph regeneration")
+        return
+
     fig1 = plot_payload_mass_to_orbit_by_year()
     fig2 = plot_cumulative_payload_mass_to_orbit(df_filtered)
     if output:
         save_plots(fig1, fig2)
         save_launches_csv(all_data)
+        print("Graphs updated successfully")
     else:
         plt.show()
 
