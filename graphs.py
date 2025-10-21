@@ -427,7 +427,7 @@ def can_skip_processing():
 
     all_cached = all(statuses)
     if all_cached:
-        print("All pages cached and data unchanged - exiting")
+        print("All pages cached and data unchanged - skipping processing")
     return all_cached
 
 
@@ -594,12 +594,20 @@ def save_plots(fig1, fig2):
         os.path.join(OUTPUT_DIR, "cumulative_payload_mass_to_orbit.svg"), format="svg"
     )
 
+    # Save the date when graphs were generated
+    date_file = os.path.join(CACHE_DIR, "last_run_date.txt")
+    with open(date_file, "w", encoding="utf-8") as f:
+        f.write(datetime.date.today().isoformat())
+
 
 def compute_data_hash(data):
-    """Compute a hash of the launch data for change detection"""
+    """Compute a hash of the launch data and current date for change detection"""
+    # Include current date since graphs extend to today
+    current_date = datetime.date.today().isoformat()
     # Convert data to a sorted, stable string representation
     data_str = json.dumps(sorted(data), sort_keys=True, default=str)
-    return hashlib.sha256(data_str.encode()).hexdigest()
+    combined = f"{current_date}:{data_str}"
+    return hashlib.sha256(combined.encode()).hexdigest()
 
 
 def has_data_changed(data):
@@ -714,6 +722,10 @@ def main(output):
     # Check if data has changed - if not, skip regeneration when outputting
     if output and not has_data_changed(all_data):
         print("No changes detected in launch data - skipping graph regeneration")
+        # Still update the date file so we know we checked today
+        date_file = os.path.join(CACHE_DIR, "last_run_date.txt")
+        with open(date_file, "w", encoding="utf-8") as f:
+            f.write(datetime.date.today().isoformat())
         return
 
     fig1 = plot_payload_mass_to_orbit_by_year()
