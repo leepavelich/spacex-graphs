@@ -2,6 +2,8 @@
 
 This project contains a Python script that fetches data about SpaceX launches from Wikipedia, analyzes the payload mass to different orbits over the years, and provides a cumulative sum of the payload mass to orbit.
 
+The scraper reads Wikipedia's year-specific Falcon launch archives as well as the current Falcon and Starship launch pages.
+
 ## Payload Mass to Orbit by Year
 
 ![Payload Mass to Orbit by Year](outputs/payload_mass_to_orbit_by_year.svg)

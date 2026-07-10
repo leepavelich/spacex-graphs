@@ -24,6 +24,7 @@ urls = [
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2010%E2%80%932019)",
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2020%E2%80%932022)",
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2023)",
+    "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2024)",
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches",
     "https://en.wikipedia.org/wiki/List_of_Starship_launches",
 ]
@@ -44,6 +45,8 @@ def get_page_name(url):
         return "Falcon 2020-2022"
     if "2023" in url:
         return "Falcon 2023"
+    if "2024" in url:
+        return "Falcon 2024"
     return "Falcon current"
 
 
