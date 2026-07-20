@@ -670,7 +670,7 @@ S5[393]",4850,GTO,GTO/GEO
 2026-05-15,22:05:00,2026,Falcon 9,SpaceX CRS-34 (Cargo Dragon C209-6),2948,LEO (ISS),LEO (Other)
 2026-05-20,02:46:00,2026,Falcon 9,Starlink: Group 17-42,13800,SSO,SSO (Starlink)
 2026-05-21,10:04:00,2026,Falcon 9,Starlink: Group 10-31,16675,LEO,LEO (Starlink)
-2026-05-22,22:30:00,2026,Block 3 Starship,20 Starlink simulator satellites and 2 modified Starlink V3[66],44000,Transatmospheric,Other
+2026-05-22,22:30:00,2026,Block 3 Starship,20 Starlink simulator satellites and 2 modified Starlink V3[66],37500,Transatmospheric,Other
 2026-05-25,11:48:00,2026,Falcon 9,Starlink: Group 10-47,16675,LEO,LEO (Starlink)
 2026-05-26,14:50:00,2026,Falcon 9,Starlink: Group 17-37,13800,SSO,SSO (Starlink)
 2026-05-29,12:57:00,2026,Falcon 9,Starlink: Group 10-53,16675,LEO,LEO (Starlink)
@@ -693,3 +693,7 @@ S5[393]",4850,GTO,GTO/GEO
 2026-07-05,10:50:00,2026,Falcon 9,Starlink: Group 10-50,16675,LEO,LEO (Starlink)
 2026-07-07,07:12:00,2026,Falcon 9,Transporter-17 (81 payloads smallsat rideshare)[80],0,SSO,SSO (Other)
 2026-07-09,09:25:00,2026,Falcon 9,Starlink: Group 10-42,16675,LEO,LEO (Starlink)
+2026-07-11,03:01:00,2026,Falcon 9,Starlink: Group 17-48,13800,SSO,SSO (Starlink)
+2026-07-14,01:28:00,2026,Falcon 9,Starlink: Group 15-14,15525,LEO,LEO (Starlink)
+2026-07-14,09:10:00,2026,Falcon 9,Starlink: Group 10-45,16675,LEO,LEO (Starlink)
+2026-07-16,20:32:00,2026,Falcon 9,SDA Tranche 1 Transport Layer E (21 satellites),0,Polar LEO,LEO (Other)

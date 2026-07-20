@@ -134,3 +134,7 @@ CLAUDE.md
 
 # Codex CLI
 AGENTS.md
+
+# Python bytecode
+__pycache__/
+*.py[cod]
