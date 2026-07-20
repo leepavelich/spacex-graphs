@@ -83,6 +83,24 @@ The script generates two graphs:
 
 When run with `--output`, the graphs are saved as SVG files in the `outputs/` directory. Without this flag, graphs are displayed on screen.
 
+## Project Structure
+
+`graphs.py` is the entry point; the implementation lives in the `spacex_graphs/` package:
+
+- `config.py` — Wikipedia URLs, HTTP settings, orbit-category mapping
+- `cache.py` — HTTP caching (ETag/Last-Modified) and change detection
+- `parsing.py` — parses launch records from Wikipedia's HTML tables
+- `transform.py` — orbit categorization and DataFrame preparation
+- `plotting.py` — builds the matplotlib figures
+- `output.py` — writes the SVG and CSV files
+- `cli.py` — command-line interface and orchestration
+
+## Running Tests
+
+```bash
+python3 -m unittest discover -s tests
+```
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a pull request or create an issue if you have suggestions for improvements.

@@ -23,6 +23,7 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 
 # Copy application code
 COPY graphs.py .
+COPY spacex_graphs/ ./spacex_graphs/
 
 # Create outputs directory
 RUN mkdir -p outputs
