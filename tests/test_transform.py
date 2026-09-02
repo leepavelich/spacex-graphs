@@ -27,6 +27,30 @@ class TestCleanOrbitCategory(unittest.TestCase):
     def test_starship_test_flight_dash(self):
         self.assertEqual(clean_orbit_category("—"), "Transatmospheric")
 
+    def test_suborbital_is_transatmospheric(self):
+        self.assertEqual(clean_orbit_category("Suborbital[19]"), "Transatmospheric")
+        self.assertEqual(clean_orbit_category("Sub-orbital[8]"), "Transatmospheric")
+
+    def test_starlink_on_suborbital_trajectory_is_transatmospheric(self):
+        self.assertEqual(
+            clean_orbit_category("Transatmospheric (Starlink)"), "Transatmospheric"
+        )
+        self.assertEqual(clean_orbit_category("Suborbital (Starlink)"), "Transatmospheric")
+
+    def test_unmapped_leo_variants_fall_back_to_leo(self):
+        self.assertEqual(clean_orbit_category("Elliptical LEO"), "LEO (Other)")
+        self.assertEqual(clean_orbit_category("Low Earth orbit"), "LEO (Other)")
+        self.assertEqual(clean_orbit_category("Elliptical LEO (Starlink)"), "LEO (Starlink)")
+
+    def test_en_dash_and_footnote_variants(self):
+        self.assertEqual(clean_orbit_category("Sun–Earth L1 insertion"), "Other")
+        self.assertEqual(
+            clean_orbit_category(
+                "Heliocentric0.99–1.67 AU[248](close to Mars transfer orbit)"
+            ),
+            "Heliocentric",
+        )
+
 
 class TestCategorizeStarlink(unittest.TestCase):
     def test_starlink_payload_tagged(self):
@@ -34,6 +58,18 @@ class TestCategorizeStarlink(unittest.TestCase):
 
     def test_other_payload_unchanged(self):
         self.assertEqual(categorize_starlink("Crew Dragon", "LEO"), "LEO")
+
+    def test_starlink_tag_not_doubled(self):
+        self.assertEqual(
+            categorize_starlink("20 Starlink V3", "LEO (Starlink)"), "LEO (Starlink)"
+        )
+
+    def test_starship_starlink_flights(self):
+        """Starlink mass counts as Starlink only once it actually reaches orbit."""
+        suborbital = categorize_starlink("20 Starlink V3", "Transatmospheric")
+        self.assertEqual(clean_orbit_category(suborbital), "Transatmospheric")
+        orbital = categorize_starlink("20 Starlink V3", "LEO")
+        self.assertEqual(clean_orbit_category(orbital), "LEO (Starlink)")
 
 
 class TestDataFrames(unittest.TestCase):

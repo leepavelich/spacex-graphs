@@ -4,90 +4,90 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category
 2012-05-22,07:44:00,2012,Falcon 9,SpaceX COTS Demo Flight 2[14](Dragon C102),525,LEO (ISS),LEO (Other)
 2012-10-08,00:35:00,2012,Falcon 9,SpaceX CRS-1[18](Dragon C103),4700,LEO (ISS),LEO (Other)
 2013-03-01,15:10:00,2013,Falcon 9,SpaceX CRS-2[18](Dragon C104),4877,LEO (ISS),LEO (Other)
-2013-09-29,16:00:00,2013,Falcon 9,CASSIOPE[18][27],500,Polar orbit LEO,LEO (Other)
-2013-12-03,22:41:00,2013,Falcon 9,SES-8[18][32][33],3170,GTO,GTO/GEO
+2013-09-29,16:00:00,2013,Falcon 9,CASSIOPE[18][2],500,Polar orbit LEO,LEO (Other)
+2013-12-03,22:41:00,2013,Falcon 9,SES-8[18][31][32],3170,GTO,GTO/GEO
 2014-01-06,22:06:00,2014,Falcon 9,Thaicom 6[18],3325,GTO,GTO/GEO
 2014-04-18,19:25:00,2014,Falcon 9,SpaceX CRS-3[18](Dragon C105),2296,LEO (ISS),LEO (Other)
 2014-07-14,15:15:00,2014,Falcon 9,Orbcomm-OG2-1(6 satellites)[18],1316,LEO,LEO (Other)
-2014-08-05,08:00:00,2014,Falcon 9,AsiaSat 8[18][51][52],4535,GTO,GTO/GEO
-2014-09-07,05:00:00,2014,Falcon 9,AsiaSat 6[18][51][55],4428,GTO,GTO/GEO
+2014-08-05,08:00:00,2014,Falcon 9,AsiaSat 8[18][50][51],4535,GTO,GTO/GEO
+2014-09-07,05:00:00,2014,Falcon 9,AsiaSat 6[18][50][54],4428,GTO,GTO/GEO
 2014-09-21,05:52:00,2014,Falcon 9,SpaceX CRS-4[18](Dragon C106.1),2216,LEO (ISS),LEO (Other)
-2015-01-10,09:47:00,2015,Falcon 9,SpaceX CRS-5[65](Dragon C107),2395,LEO (ISS),LEO (Other)
-2015-02-11,23:03:00,2015,Falcon 9,DSCOVR[65][70],570,Sun–Earth L1 insertion,Other
+2015-01-10,09:47:00,2015,Falcon 9,SpaceX CRS-5[64](Dragon C107),2395,LEO (ISS),LEO (Other)
+2015-02-11,23:03:00,2015,Falcon 9,DSCOVR[64][69],570,Sun–Earth L1 insertion,Other
 2015-03-02,03:50:00,2015,Falcon 9,"ABS-3A
-Eutelsat 115 West B[65]",4159,GTO,GTO/GEO
-2015-04-14,20:10:00,2015,Falcon 9,SpaceX CRS-6[65](Dragon C108.1),1898,LEO (ISS),LEO (Other)
-2015-04-27,23:03:00,2015,Falcon 9,TürkmenÄlem 52°E / MonacoSAT[65][84],4707,GTO,GTO/GEO
-2015-06-28,14:21:00,2015,Falcon 9,SpaceX CRS-7[65](Dragon C109),0,LEO (ISS),LEO (Other)
-2015-12-22,01:29:00,2015,Falcon 9,Orbcomm-OG2-2(11 satellites)[18][94],2034,LEO,LEO (Other)
-2016-01-17,18:42:00,2016,Falcon 9,Jason-3[65][101],553,LEO,LEO (Other)
-2016-03-04,23:35:00,2016,Falcon 9,SES-9[65][106][107],5271,GTO,GTO/GEO
-2016-04-08,20:43:00,2016,Falcon 9,SpaceX CRS-8[65][107](Dragon C110.1),3136,LEO (ISS),LEO (Other)
-2016-05-06,05:21:00,2016,Falcon 9,JCSAT-14[119],4696,GTO,GTO/GEO
-2016-05-27,21:39:00,2016,Falcon 9,Thaicom 8[126][127],3100,GTO,GTO/GEO
+Eutelsat 115 West B[64]",4159,GTO,GTO/GEO
+2015-04-14,20:10:00,2015,Falcon 9,SpaceX CRS-6[64](Dragon C108.1),1898,LEO (ISS),LEO (Other)
+2015-04-27,23:03:00,2015,Falcon 9,TürkmenÄlem 52°E / MonacoSAT[64][83],4707,GTO,GTO/GEO
+2015-06-28,14:21:00,2015,Falcon 9,SpaceX CRS-7[64](Dragon C109),0,LEO (ISS),LEO (Other)
+2015-12-22,01:29:00,2015,Falcon 9,Orbcomm-OG2-2(11 satellites)[18][93],2034,LEO,LEO (Other)
+2016-01-17,18:42:00,2016,Falcon 9,Jason-3[64][100],553,LEO,LEO (Other)
+2016-03-04,23:35:00,2016,Falcon 9,SES-9[64][105][106],5271,GTO,GTO/GEO
+2016-04-08,20:43:00,2016,Falcon 9,SpaceX CRS-8[64][106](Dragon C110.1),3136,LEO (ISS),LEO (Other)
+2016-05-06,05:21:00,2016,Falcon 9,JCSAT-14[117],4696,GTO,GTO/GEO
+2016-05-27,21:39:00,2016,Falcon 9,Thaicom 8[124][125],3100,GTO,GTO/GEO
 2016-06-15,14:29:00,2016,Falcon 9,"ABS-2A
-Eutelsat 117 West B[65]",3600,GTO,GTO/GEO
-2016-07-18,04:45:00,2016,Falcon 9,SpaceX CRS-9[65][136](Dragon C111.1),2257,LEO (ISS),LEO (Other)
+Eutelsat 117 West B[64]",3600,GTO,GTO/GEO
+2016-07-18,04:45:00,2016,Falcon 9,SpaceX CRS-9[64][133](Dragon C111.1),2257,LEO (ISS),LEO (Other)
 2016-08-14,05:26:00,2016,Falcon 9,JCSAT-16,4600,GTO,GTO/GEO
 2016-09-03,07:00:00,2016,Falcon 9,AMOS-6,0,GTO,GTO/GEO
-2017-01-14,17:54:00,2017,Falcon 9,Iridium NEXT-1(10 satellites)[147][148],9600,Polar LEO,LEO (Other)
-2017-02-19,14:39:00,2017,Falcon 9,SpaceX CRS-10[136](Dragon C112.1),2490,LEO (ISS),LEO (Other)
+2017-01-14,17:54:00,2017,Falcon 9,Iridium NEXT-1(10 satellites)[144][145],9600,Polar LEO,LEO (Other)
+2017-02-19,14:39:00,2017,Falcon 9,SpaceX CRS-10[133](Dragon C112.1),2490,LEO (ISS),LEO (Other)
 2017-03-16,06:00:00,2017,Falcon 9,EchoStar 23,5600,GTO,GTO/GEO
-2017-03-30,22:27:00,2017,Falcon 9,SES-10[106][162],5300,GTO,GTO/GEO
-2017-05-01,11:15:00,2017,Falcon 9,NROL-76[168],0,LEO[169],LEO (Other)
-2017-05-15,23:21:00,2017,Falcon 9,Inmarsat-5 F4[174],6070,GTO,GTO/GEO
-2017-06-03,21:07:00,2017,Falcon 9,SpaceX CRS-11[136](Dragon C106.2),2708,LEO (ISS),LEO (Other)
-2017-06-23,19:10:00,2017,Falcon 9,BulgariaSat-1[190],3669,GTO,GTO/GEO
+2017-03-30,22:27:00,2017,Falcon 9,SES-10[105][159],5300,GTO,GTO/GEO
+2017-05-01,11:15:00,2017,Falcon 9,NROL-76[165],0,LEO[166],LEO (Other)
+2017-05-15,23:21:00,2017,Falcon 9,Inmarsat-5 F4[171],6070,GTO,GTO/GEO
+2017-06-03,21:07:00,2017,Falcon 9,SpaceX CRS-11[133](Dragon C106.2),2708,LEO (ISS),LEO (Other)
+2017-06-23,19:10:00,2017,Falcon 9,BulgariaSat-1[186],3669,GTO,GTO/GEO
 2017-06-25,20:25:00,2017,Falcon 9,Iridium NEXT-2(10 satellites),9600,LEO,LEO (Other)
-2017-07-05,23:38:00,2017,Falcon 9,Intelsat 35e[195],6761,GTO,GTO/GEO
-2017-08-14,16:31:00,2017,Falcon 9,SpaceX CRS-12[136](Dragon C113.1),3310,LEO (ISS),LEO (Other)
-2017-08-24,18:51:00,2017,Falcon 9,Formosat-5[204][205],475,SSO,SSO (Other)
+2017-07-05,23:38:00,2017,Falcon 9,Intelsat 35e[191],6761,GTO,GTO/GEO
+2017-08-14,16:31:00,2017,Falcon 9,SpaceX CRS-12[133](Dragon C113.1),3310,LEO (ISS),LEO (Other)
+2017-08-24,18:51:00,2017,Falcon 9,Formosat-5[199][200],475,SSO,SSO (Other)
 2017-09-07,14:00:00,2017,Falcon 9,Boeing X-37B OTV-5,4990,LEO,LEO (Other)
-2017-10-09,12:37:00,2017,Falcon 9,Iridium NEXT-3(10 satellites)[147],9600,Polar LEO,LEO (Other)
+2017-10-09,12:37:00,2017,Falcon 9,Iridium NEXT-3(10 satellites)[144],9600,Polar LEO,LEO (Other)
 2017-10-11,22:53:00,2017,Falcon 9,SES-11 / EchoStar 105,5400,GTO,GTO/GEO
-2017-10-30,19:34:00,2017,Falcon 9,Koreasat 5A[218],3500,GTO,GTO/GEO
-2017-12-15,15:36:00,2017,Falcon 9,SpaceX CRS-13[136](Dragon C108.2),2205,LEO (ISS),LEO (Other)
-2017-12-23,01:27:00,2017,Falcon 9,Iridium NEXT-4(10 satellites)[147],9600,Polar LEO,LEO (Other)
-2018-01-08,01:00:00,2018,Falcon 9,Zuma[233],0,LEO,LEO (Other)
-2018-01-31,21:25:00,2018,Falcon 9,GovSat-1 (SES-16)[239],4230,GTO,GTO/GEO
-2018-02-06,20:45:00,2018,Falcon Heavy,Elon Musk's Tesla Roadster[246][247],1250,Heliocentric0.99–1.67 AU[248](close to Mars transfer orbit),Other
+2017-10-30,19:34:00,2017,Falcon 9,Koreasat 5A[213],3500,GTO,GTO/GEO
+2017-12-15,15:36:00,2017,Falcon 9,SpaceX CRS-13[133](Dragon C108.2),2205,LEO (ISS),LEO (Other)
+2017-12-23,01:27:00,2017,Falcon 9,Iridium NEXT-4(10 satellites)[144],9600,Polar LEO,LEO (Other)
+2018-01-08,01:00:00,2018,Falcon 9,Zuma[228],0,LEO,LEO (Other)
+2018-01-31,21:25:00,2018,Falcon 9,GovSat-1 (SES-16)[234],4230,GTO,GTO/GEO
+2018-02-06,20:45:00,2018,Falcon Heavy,Elon Musk's Tesla Roadster[241][242],1250,Heliocentric0.99–1.67 AU[243](close to Mars transfer orbit),Heliocentric
 2018-02-22,14:17:00,2018,Falcon 9,Paz,2150,SSO,SSO (Other)
-2018-03-06,05:33:00,2018,Falcon 9,"Hispasat 30W-6[269]
-PODSat[270]",6092,GTO,GTO/GEO
-2018-03-30,14:14:00,2018,Falcon 9,Iridium NEXT-5(10 satellites)[147],9600,Polar LEO,LEO (Other)
-2018-04-02,20:30:00,2018,Falcon 9,SpaceX CRS-14[136](Dragon C110.2),2647,LEO (ISS),LEO (Other)
-2018-04-18,22:51:00,2018,Falcon 9,Transiting Exoplanet Survey Satellite (TESS)[296],362,HEO for P/2 orbit,Other
-2018-05-11,20:14:00,2018,Falcon 9,Bangabandhu-1[304][305],3600,GTO,GTO/GEO
-2018-05-22,19:47:00,2018,Falcon 9,"Iridium NEXT-6(5 satellites)[147][149]
-GRACE-FO × 2[315][316]",6460,Polar LEO,LEO (Other)
-2018-06-04,04:45:00,2018,Falcon 9,SES-12[323],5384,GTO,GTO/GEO
+2018-03-06,05:33:00,2018,Falcon 9,"Hispasat 30W-6[264]
+PODSat[265]",6092,GTO,GTO/GEO
+2018-03-30,14:14:00,2018,Falcon 9,Iridium NEXT-5(10 satellites)[144],9600,Polar LEO,LEO (Other)
+2018-04-02,20:30:00,2018,Falcon 9,SpaceX CRS-14[133](Dragon C110.2),2647,LEO (ISS),LEO (Other)
+2018-04-18,22:51:00,2018,Falcon 9,Transiting Exoplanet Survey Satellite (TESS)[291],362,HEO for P/2 orbit,Other
+2018-05-11,20:14:00,2018,Falcon 9,Bangabandhu-1[297][298],3600,GTO,GTO/GEO
+2018-05-22,19:47:00,2018,Falcon 9,"Iridium NEXT-6(5 satellites)[144][146]
+GRACE-FO × 2[148][307]",6460,Polar LEO,LEO (Other)
+2018-06-04,04:45:00,2018,Falcon 9,SES-12[313],5384,GTO,GTO/GEO
 2018-06-29,09:42:00,2018,Falcon 9,SpaceX CRS-15(Dragon C111.2),2697,LEO (ISS),LEO (Other)
-2018-07-22,05:50:00,2018,Falcon 9,Telstar 19V[333],7075,GTO[335],GTO/GEO
-2018-07-25,11:39:00,2018,Falcon 9,Iridium NEXT-7(10 satellites)[147],9600,Polar LEO,LEO (Other)
-2018-08-07,05:18:00,2018,Falcon 9,Merah Putih (formerly Telkom-4)[347][348],5800,GTO,GTO/GEO
-2018-09-10,04:45:00,2018,Falcon 9,Telstar 18V / Apstar-5C[333],7060,GTO[352],GTO/GEO
-2018-10-08,02:22:00,2018,Falcon 9,SAOCOM 1A[356][357],3000,SSO,SSO (Other)
-2018-11-15,20:46:00,2018,Falcon 9,Es'hail 2[359],5300,GTO,GTO/GEO
+2018-07-22,05:50:00,2018,Falcon 9,Telstar 19V[322],7075,GTO[324],GTO/GEO
+2018-07-25,11:39:00,2018,Falcon 9,Iridium NEXT-7(10 satellites)[144],9600,Polar LEO,LEO (Other)
+2018-08-07,05:18:00,2018,Falcon 9,Merah Putih (formerly Telkom-4)[335][336],5800,GTO,GTO/GEO
+2018-09-10,04:45:00,2018,Falcon 9,Telstar 18V / Apstar-5C[322],7060,GTO[340],GTO/GEO
+2018-10-08,02:22:00,2018,Falcon 9,SAOCOM 1A[344][345],3000,SSO,SSO (Other)
+2018-11-15,20:46:00,2018,Falcon 9,Es'hail 2[347],5300,GTO,GTO/GEO
 2018-12-03,18:34:00,2018,Falcon 9,SSO-A (SmallSat Express)(SHERPA),4000,SSO,SSO (Other)
 2018-12-05,18:16:00,2018,Falcon 9,SpaceX CRS-16(Dragon C112.2),2500,LEO (ISS),LEO (Other)
 2018-12-23,13:51:00,2018,Falcon 9,GPS III-01 (Vespucci),4400,MEO,MEO
-2019-01-11,15:31:00,2019,Falcon 9,Iridium NEXT-8(10 satellites)[147],9600,Polar LEO,LEO (Other)
-2019-02-22,01:45:00,2019,Falcon 9,"Nusantara Satu (PSN-6)[391]
-Beresheet Moon lander[392]
-S5[393]",4850,GTO,GTO/GEO
-2019-03-02,07:49:00,2019,Falcon 9,Crew Dragon Demo-1[405](Dragon C204),12055,LEO (ISS),LEO (Other)
-2019-04-11,22:35:00,2019,Falcon Heavy,Arabsat-6A[413],6465,GTO,GTO/GEO
-2019-05-04,06:48:00,2019,Falcon 9,SpaceX CRS-17[136](Dragon C113.2),2495,LEO (ISS),LEO (Other)
+2019-01-11,15:31:00,2019,Falcon 9,Iridium NEXT-8(10 satellites)[144],9600,Polar LEO,LEO (Other)
+2019-02-22,01:45:00,2019,Falcon 9,"Nusantara Satu (PSN-6)[379]
+Beresheet Moon lander[380]
+S5[381]",4850,GTO,GTO/GEO
+2019-03-02,07:49:00,2019,Falcon 9,Crew Dragon Demo-1[393](Dragon C204),12055,LEO (ISS),LEO (Other)
+2019-04-11,22:35:00,2019,Falcon Heavy,Arabsat-6A[401],6465,GTO,GTO/GEO
+2019-05-04,06:48:00,2019,Falcon 9,SpaceX CRS-17[133](Dragon C113.2),2495,LEO (ISS),LEO (Other)
 2019-05-24,02:30:00,2019,Falcon 9,Starlink: v0.9 launch (60 satellites),13620,LEO,LEO (Starlink)
 2019-06-12,14:17:00,2019,Falcon 9,RADARSAT Constellation(3 satellites),4200,SSO,SSO (Other)
 2019-06-25,06:30:00,2019,Falcon Heavy,Space Test Program Flight 2 (STP-2),3700,LEO / MEO,Other
-2019-07-25,22:01:00,2019,Falcon 9,SpaceX CRS-18[136](Dragon C108.3),2268,LEO (ISS),LEO (Other)
-2019-08-06,23:23:00,2019,Falcon 9,AMOS-17[464],6500,GTO,GTO/GEO
+2019-07-25,22:01:00,2019,Falcon 9,SpaceX CRS-18[133](Dragon C108.3),2268,LEO (ISS),LEO (Other)
+2019-08-06,23:23:00,2019,Falcon 9,AMOS-17[452],6500,GTO,GTO/GEO
 2019-11-11,14:56:00,2019,Falcon 9,Starlink: Launch 1 (60 satellites),15600,LEO,LEO (Starlink)
-2019-12-05,17:29:00,2019,Falcon 9,SpaceX CRS-19[474](Dragon C106.3),2617,LEO (ISS),LEO (Other)
-2019-12-17,00:10:00,2019,Falcon 9,JCSat-18 / Kacific 1[478],6956,GTO,GTO/GEO
+2019-12-05,17:29:00,2019,Falcon 9,SpaceX CRS-19[133](Dragon C106.3),2617,LEO (ISS),LEO (Other)
+2019-12-17,00:10:00,2019,Falcon 9,JCSat-18 / Kacific 1[464],6956,GTO,GTO/GEO
 2020-01-07,02:19:00,2020,Falcon 9,Starlink: Launch 2 (60 satellites),15600,LEO,LEO (Starlink)
-2020-01-19,15:30:00,2020,Falcon 9,Crew Dragon in-flight abort test[7](Dragon C205.1),12050,Sub-orbital[8],Other
+2020-01-19,15:30:00,2020,Falcon 9,Crew Dragon in-flight abort test[7](Dragon C205.1),12050,Sub-orbital[8],Transatmospheric
 2020-01-29,14:07:00,2020,Falcon 9,Starlink: Launch 3 (60 satellites),15600,LEO,LEO (Starlink)
 2020-02-17,15:05:00,2020,Falcon 9,Starlink: Launch 4 (60 satellites),15600,LEO,LEO (Starlink)
 2020-03-07,04:50:00,2020,Falcon 9,SpaceX CRS-20 (Dragon C112.3),1977,LEO (ISS),LEO (Other)
@@ -229,7 +229,7 @@ S5[393]",4850,GTO,GTO/GEO
 2023-04-07,04:30:00,2023,Falcon 9,Intelsat 40e,5588,GTO,GTO/GEO
 2023-04-15,06:47:00,2023,Falcon 9,Transporter-7 (51 payload smallsat rideshare),0,SSO,SSO (Other)
 2023-04-19,14:31:00,2023,Falcon 9,Starlink: Group 6-2 (21 satellites),15300,LEO,LEO (Starlink)
-2023-04-20,13:33:00,2023,Block 1 Starship,—N/a,0,Transatmospheric[10],Transatmospheric
+2023-04-20,13:33:00,2023,Block 1 Starship,Starship Test,0,Transatmospheric[10],Transatmospheric
 2023-04-27,13:40:00,2023,Falcon 9,Starlink: Group 3-5 (46 satellites),14100,SSO,SSO (Starlink)
 2023-04-28,22:12:00,2023,Falcon 9,O3b mPOWER 3 & 4,4100,MEO,MEO
 2023-05-01,00:26:00,2023,Falcon Heavy,ViaSat-3 Americas[85][86],6400,GEO,GTO/GEO
@@ -289,7 +289,7 @@ S5[393]",4850,GTO,GTO/GEO
 2023-11-11,18:49:00,2023,Falcon 9,Transporter-9 (113 payload smallsat rideshare),0,SSO,SSO (Other)
 2023-11-12,21:08:00,2023,Falcon 9,O3b mPOWER 5 & 6,4100,MEO,MEO
 2023-11-18,05:05:00,2023,Falcon 9,Starlink: Group 6-28 (23 satellites),16800,LEO,LEO (Starlink)
-2023-11-18,13:02:00,2023,Block 1 Starship,—N/a,0,Transatmospheric[15],Transatmospheric
+2023-11-18,13:02:00,2023,Block 1 Starship,Starship Test,0,Transatmospheric[15],Transatmospheric
 2023-11-20,10:30:00,2023,Falcon 9,Starlink: Group 7-7 (22 satellites),16100,LEO,LEO (Starlink)
 2023-11-22,07:47:00,2023,Falcon 9,Starlink: Group 6-29 (23 satellites),16800,LEO,LEO (Starlink)
 2023-11-28,04:20:00,2023,Falcon 9,Starlink: Group 6-30 (23 satellites),16800,LEO,LEO (Starlink)
@@ -326,7 +326,7 @@ S5[393]",4850,GTO,GTO/GEO
 2024-03-04,23:56:00,2024,Falcon 9,Starlink: Group 6-41 (23 satellites),17100,LEO,LEO (Starlink)
 2024-03-10,23:05:00,2024,Falcon 9,Starlink: Group 6-43 (23 satellites),17100,LEO,LEO (Starlink)
 2024-03-11,04:09:00,2024,Falcon 9,Starlink: Group 7-17 (23 satellites),17100,LEO,LEO (Starlink)
-2024-03-14,13:25:00,2024,Block 1 Starship,—N/a,0,Suborbital[19],Other
+2024-03-14,13:25:00,2024,Block 1 Starship,Starship Test,0,Suborbital[19],Transatmospheric
 2024-03-16,00:21:00,2024,Falcon 9,Starlink: Group 6-44 (23 satellites),17100,LEO,LEO (Starlink)
 2024-03-19,02:28:00,2024,Falcon 9,Starlink: Group 7-16 (20 satellites) + 2 Starshield satellites,16300,LEO,LEO (Starlink)
 2024-03-21,20:55:00,2024,Falcon 9,SpaceX CRS-30 (Dragon C209-4),2721,LEO (ISS),LEO (Other)
@@ -362,7 +362,7 @@ S5[393]",4850,GTO,GTO/GEO
 2024-05-28,22:20:00,2024,Falcon 9,EarthCARE,2350,SSO,SSO (Other)
 2024-06-01,02:37:00,2024,Falcon 9,Starlink: Group 6-64 (23 satellites),17100,LEO,LEO (Starlink)
 2024-06-05,02:16:00,2024,Falcon 9,Starlink: Group 8-5 (20 satellites),16300,LEO,LEO (Starlink)
-2024-06-06,12:50:00,2024,Block 1 Starship,—N/a,0,Suborbital[23],Other
+2024-06-06,12:50:00,2024,Block 1 Starship,Starship Test,0,Suborbital[23],Transatmospheric
 2024-06-08,01:56:00,2024,Falcon 9,Starlink: Group 10-1 (22 satellites),16700,LEO,LEO (Starlink)
 2024-06-08,12:58:00,2024,Falcon 9,Starlink: Group 8-8 (20 satellites),16300,LEO,LEO (Starlink)
 2024-06-19,03:40:00,2024,Falcon 9,Starlink: Group 9-1 (20 satellites),16300,LEO,LEO (Starlink)
@@ -400,7 +400,7 @@ S5[393]",4850,GTO,GTO/GEO
 2024-09-25,04:01:00,2024,Falcon 9,Starlink: Group 9-8 (20 satellites),16300,LEO,LEO (Starlink)
 2024-09-28,17:17:00,2024,Falcon 9,Crew-9 (Crew Dragon C212-4 Freedom),13000,LEO (ISS),LEO (Other)
 2024-10-07,14:52:00,2024,Falcon 9,Hera,1108,Heliocentric,Heliocentric
-2024-10-13,12:25:00,2024,Block 1 Starship,—N/a,0,Suborbital[29],Other
+2024-10-13,12:25:00,2024,Block 1 Starship,Starship Test,0,Suborbital[29],Transatmospheric
 2024-10-14,16:06:00,2024,Falcon Heavy,Europa Clipper,6065,Heliocentric,Heliocentric
 2024-10-15,06:10:00,2024,Falcon 9,Starlink: Group 10-10 (23 satellites),17100,LEO,LEO (Starlink)
 2024-10-15,08:21:00,2024,Falcon 9,Starlink: Group 9-7 (20 satellites),16300,LEO,LEO (Starlink)
@@ -444,12 +444,12 @@ S5[393]",4850,GTO,GTO/GEO
 2025-01-04,01:27:00,2025,Falcon 9,Thuraya 4-NGS,5000,GTO,GTO/GEO
 2025-01-06,20:43:00,2025,Falcon 9,Starlink: Group 6‑71,17500,LEO,LEO (Starlink)
 2025-01-08,15:27:00,2025,Falcon 9,Starlink: Group 12-11 (21 satellites),16500,LEO,LEO (Starlink)
-2025-01-10,03:53:00,2025,Falcon 9,NROL-153 (22 Starshield satellites)[34],0,LEO,LEO (Other)
+2025-01-10,03:53:00,2025,Falcon 9,NROL-153 (22 Starshield satellites)[35],0,LEO,LEO (Other)
 2025-01-10,19:11:00,2025,Falcon 9,Starlink: Group 12-12 (21 satellites),16500,LEO,LEO (Starlink)
 2025-01-13,16:47:00,2025,Falcon 9,Starlink: Group 12-4 (21 satellites),16500,LEO,LEO (Starlink)
 2025-01-14,19:09:00,2025,Falcon 9,Transporter-12 (131 payload smallsat rideshare),2000,SSO,SSO (Other)
 2025-01-15,06:11:00,2025,Falcon 9,Blue Ghost Mission 1,2517,TLI,Other
-2025-01-16,22:37:00,2025,Block 2 Starship,10 Starlink simulator satellites[37],0,Transatmospheric[40],Other
+2025-01-16,22:37:00,2025,Block 2 Starship,10 Starlink simulator satellites[37],0,Transatmospheric[40],Transatmospheric
 2025-01-21,05:24:00,2025,Falcon 9,Starlink: Group 13-1 (21 satellites) + 2 Starshield satellites,15300,LEO,LEO (Starlink)
 2025-01-21,15:45:00,2025,Falcon 9,Starlink: Group 11-8 (27 satellites),15500,LEO,LEO (Starlink)
 2025-01-24,14:07:00,2025,Falcon 9,Starlink: Group 11-6 (23 satellites),17100,LEO,LEO (Starlink)
@@ -465,14 +465,14 @@ S5[393]",4850,GTO,GTO/GEO
 2025-02-18,23:21:00,2025,Falcon 9,Starlink: Group 10-12 (23 satellites),17100,LEO,LEO (Starlink)
 2025-02-21,15:19:00,2025,Falcon 9,Starlink: Group 12-14 (23 satellites),17100,LEO,LEO (Starlink)
 2025-02-23,01:38:00,2025,Falcon 9,Starlink: Group 15-1 (22 satellites),16800,LEO,LEO (Starlink)
-2025-02-27,00:16:00,2025,Falcon 9,"IM-2 Nova-C ""Athena"" lunar landerLunar TrailblazerBrokkr-2 Odin[67]Chimera-1TBD",0,TLI,Other
+2025-02-27,00:16:00,2025,Falcon 9,"IM-2 Nova-C ""Athena"" lunar landerLunar TrailblazerBrokkr-2 Odin[69]Chimera-1TBD",0,TLI,Other
 2025-02-27,03:34:00,2025,Falcon 9,Starlink: Group 12-13 (21 satellites),16500,LEO,LEO (Starlink)
 2025-03-03,02:24:00,2025,Falcon 9,Starlink: Group 12-20 (21 satellites),16500,LEO,LEO (Starlink)
-2025-03-06,23:31:00,2025,Block 2 Starship,4 Starlink simulator satellites[44],0,Transatmospheric,Other
-2025-03-12,03:10:00,2025,Falcon 9,SPHERExPUNCH[76],758,SSO,SSO (Other)
+2025-03-06,23:31:00,2025,Block 2 Starship,4 Starlink simulator satellites[44],0,Transatmospheric,Transatmospheric
+2025-03-12,03:10:00,2025,Falcon 9,SPHERExPUNCH[78],758,SSO,SSO (Other)
 2025-03-13,02:35:00,2025,Falcon 9,Starlink: Group 12-21,16500,LEO,LEO (Starlink)
 2025-03-14,23:03:00,2025,Falcon 9,Crew-10 (Crew Dragon C210-4 Endurance),13000,LEO (ISS),LEO (Other)
-2025-03-15,06:43:00,2025,Falcon 9,Transporter-13 (74 payload smallsat rideshare)[80],0,SSO,SSO (Other)
+2025-03-15,06:43:00,2025,Falcon 9,Transporter-13 (74 payload smallsat rideshare)[82],0,SSO,SSO (Other)
 2025-03-15,11:35:00,2025,Falcon 9,Starlink: Group 12-16,17100,LEO,LEO (Starlink)
 2025-03-18,19:57:00,2025,Falcon 9,Starlink: Group 12-25,17100,LEO,LEO (Starlink)
 2025-03-21,06:49:00,2025,Falcon 9,NROL-57 (~11 Starshield satellites),0,LEO,LEO (Other)
@@ -488,7 +488,7 @@ S5[393]",4850,GTO,GTO/GEO
 2025-04-14,04:00:00,2025,Falcon 9,Starlink: Group 6-73,15500,LEO,LEO (Starlink)
 2025-04-20,12:29:00,2025,Falcon 9,NROL-145 (22 Starshield satellites),0,LEO,LEO (Other)
 2025-04-21,08:15:00,2025,Falcon 9,SpaceX CRS-32 (Cargo Dragon C209-5),3021,LEO (ISS),LEO (Other)
-2025-04-22,00:48:00,2025,Falcon 9,"Bandwagon-3 (425Sat-3,[101] Tomorrow-S7, PHOENIX)",0,LEO,LEO (Other)
+2025-04-22,00:48:00,2025,Falcon 9,"Bandwagon-3 (425Sat-3,[103] Tomorrow-S7, PHOENIX)",0,LEO,LEO (Other)
 2025-04-25,01:52:00,2025,Falcon 9,Starlink: Group 6-74,16100,LEO,LEO (Starlink)
 2025-04-28,02:09:00,2025,Falcon 9,Starlink: Group 12-23,17100,LEO,LEO (Starlink)
 2025-04-28,20:42:00,2025,Falcon 9,Starlink: Group 11-9,15500,LEO,LEO (Starlink)
@@ -506,7 +506,7 @@ S5[393]",4850,GTO,GTO/GEO
 2025-05-23,22:32:00,2025,Falcon 9,Starlink: Group 11-16,15500,LEO,LEO (Starlink)
 2025-05-24,17:19:00,2025,Falcon 9,Starlink: Group 12-22,17100,LEO,LEO (Starlink)
 2025-05-27,16:57:00,2025,Falcon 9,Starlink: Group 17-1,17500,SSO,SSO (Starlink)
-2025-05-27,23:36:00,2025,Block 2 Starship,8 Starlink simulator satellites[47],0,Transatmospheric,Other
+2025-05-27,23:36:00,2025,Block 2 Starship,8 Starlink simulator satellites[47],0,Transatmospheric,Transatmospheric
 2025-05-28,13:30:00,2025,Falcon 9,Starlink: Group 10-32,15500,LEO,LEO (Starlink)
 2025-05-30,17:37:00,2025,Falcon 9,GPS III-8,4350,MEO,MEO
 2025-05-31,20:10:00,2025,Falcon 9,Starlink: Group 11-18,15500,LEO,LEO (Starlink)
@@ -520,12 +520,12 @@ S5[393]",4850,GTO,GTO/GEO
 2025-06-17,03:36:00,2025,Falcon 9,Starlink: Group 15-9,14950,LEO,LEO (Starlink)
 2025-06-18,05:55:00,2025,Falcon 9,Starlink: Group 10-18,16100,LEO,LEO (Starlink)
 2025-06-23,05:58:00,2025,Falcon 9,Starlink: Group 10-23,15500,LEO,LEO (Starlink)
-2025-06-23,21:25:00,2025,Falcon 9,Transporter-14 (70 payloads smallsat rideshare)[80],0,SSO,SSO (Other)
+2025-06-23,21:25:00,2025,Falcon 9,Transporter-14 (70 payloads smallsat rideshare)[82],0,SSO,SSO (Other)
 2025-06-25,06:31:00,2025,Falcon 9,Axiom Mission 4 (Crew Dragon C213-1 Grace),13000,LEO (ISS),LEO (Other)
 2025-06-25,19:54:00,2025,Falcon 9,Starlink: Group 10-16,15500,LEO,LEO (Starlink)
 2025-06-28,04:26:00,2025,Falcon 9,Starlink: Group 10-34,15500,LEO,LEO (Starlink)
 2025-06-28,17:13:00,2025,Falcon 9,Starlink: Group 15-7,14950,LEO,LEO (Starlink)
-2025-07-01,21:04:00,2025,Falcon 9,MTG-S1 / Sentinel-4A[140],3800,GTO,GTO/GEO
+2025-07-01,21:04:00,2025,Falcon 9,MTG-S1 / Sentinel-4A[142],3800,GTO,GTO/GEO
 2025-07-02,06:28:00,2025,Falcon 9,Starlink: Group 10-25,15500,LEO,LEO (Starlink)
 2025-07-08,08:21:00,2025,Falcon 9,Starlink: Group 10-28,16100,LEO,LEO (Starlink)
 2025-07-13,05:04:00,2025,Falcon 9,Dror-1 [he],4000,GTO,GTO/GEO
@@ -537,7 +537,7 @@ S5[393]",4850,GTO,GTO/GEO
 2025-07-26,09:01:00,2025,Falcon 9,Starlink: Group 10-26,16100,LEO,LEO (Starlink)
 2025-07-27,04:31:00,2025,Falcon 9,Starlink: Group 17-2,17500,SSO,SSO (Starlink)
 2025-07-30,03:37:00,2025,Falcon 9,Starlink: Group 10-29,16100,LEO,LEO (Starlink)
-2025-07-31,18:35:00,2025,Falcon 9,Starlink: Group 13-4 + 2 Starshield satellites[157],14060,SSO,SSO (Starlink)
+2025-07-31,18:35:00,2025,Falcon 9,Starlink: Group 13-4 + 2 Starshield satellites[159],14060,SSO,SSO (Starlink)
 2025-08-01,15:43:00,2025,Falcon 9,Crew-11 (Crew Dragon C206-6 Endeavour),13000,LEO (ISS),LEO (Other)
 2025-08-04,07:57:00,2025,Falcon 9,Starlink: Group 10-30,16100,LEO,LEO (Starlink)
 2025-08-11,12:35:00,2025,Falcon 9,KuiperSat × 24 (KF-02),14784,LEO,LEO (Other)
@@ -547,8 +547,8 @@ S5[393]",4850,GTO,GTO/GEO
 2025-08-22,03:50:00,2025,Falcon 9,USSF-36 (Boeing X-37B OTV-8),4990,LEO,LEO (Other)
 2025-08-22,17:04:00,2025,Falcon 9,Starlink: Group 17-6,17500,SSO,SSO (Starlink)
 2025-08-24,06:45:00,2025,Falcon 9,SpaceX CRS-33 (Dragon C211-3),2300,LEO (ISS),LEO (Other)
-2025-08-26,18:53:00,2025,Falcon 9,NAOS + 7 rideshares[174],1370,SSO,SSO (Other)
-2025-08-26,23:30:00,2025,Block 2 Starship,8 Starlink simulator satellites[51],16000,Transatmospheric,Other
+2025-08-26,18:53:00,2025,Falcon 9,NAOS + 7 rideshares[176],1370,SSO,SSO (Other)
+2025-08-26,23:30:00,2025,Block 2 Starship,8 Starlink simulator satellites[51],16000,Transatmospheric,Transatmospheric
 2025-08-27,11:10:00,2025,Falcon 9,Starlink: Group 10-56,16100,LEO,LEO (Starlink)
 2025-08-28,08:12:00,2025,Falcon 9,Starlink: Group 10-11,16100,LEO,LEO (Starlink)
 2025-08-30,04:59:00,2025,Falcon 9,Starlink: Group 17-7,17500,SSO,SSO (Starlink)
@@ -565,14 +565,14 @@ S5[393]",4850,GTO,GTO/GEO
 2025-09-19,16:31:00,2025,Falcon 9,Starlink: Group 17-12,17500,SSO,SSO (Starlink)
 2025-09-21,10:53:00,2025,Falcon 9,Starlink: Group 10-27,16100,LEO,LEO (Starlink)
 2025-09-22,17:38:00,2025,Falcon 9,NROL-48 (8 Starshield satellites),0,LEO,LEO (Other)
-2025-09-24,11:30:00,2025,Falcon 9,Interstellar Mapping and Acceleration Probe (IMAP)[197],1477,Sun–Earth L1,Other
+2025-09-24,11:30:00,2025,Falcon 9,Interstellar Mapping and Acceleration Probe (IMAP)[199],1477,Sun–Earth L1,Other
 2025-09-25,08:39:00,2025,Falcon 9,Starlink: Group 10-15,16100,LEO,LEO (Starlink)
 2025-09-26,04:26:00,2025,Falcon 9,Starlink: Group 17-11,17500,SSO,SSO (Starlink)
 2025-09-29,02:04:00,2025,Falcon 9,Starlink: Group 11-20,16100,LEO,LEO (Starlink)
 2025-10-03,14:06:00,2025,Falcon 9,Starlink: Group 11-39,16100,LEO,LEO (Starlink)
 2025-10-07,06:46:00,2025,Falcon 9,Starlink: Group 10-59,16100,LEO,LEO (Starlink)
 2025-10-08,03:54:00,2025,Falcon 9,Starlink: Group 11-17,16100,LEO,LEO (Starlink)
-2025-10-13,23:23:00,2025,Block 2 Starship,8 Starlink simulator satellites[59],16000,Transatmospheric,Other
+2025-10-13,23:23:00,2025,Block 2 Starship,8 Starlink simulator satellites[59],16000,Transatmospheric,Transatmospheric
 2025-10-14,01:58:00,2025,Falcon 9,KuiperSat × 24 (KF-03),14784,LEO,LEO (Other)
 2025-10-15,23:06:00,2025,Falcon 9,SDA Tranche 1 Transport Layer C (21 satellites),0,Polar LEO,LEO (Other)
 2025-10-16,09:27:00,2025,Falcon 9,Starlink: Group 10-52,16100,LEO,LEO (Starlink)
@@ -585,26 +585,26 @@ S5[393]",4850,GTO,GTO/GEO
 2025-10-28,00:43:00,2025,Falcon 9,Starlink: Group 11-21,16100,LEO,LEO (Starlink)
 2025-10-29,16:35:00,2025,Falcon 9,Starlink: Group 10-37,16675,LEO,LEO (Starlink)
 2025-10-31,20:41:00,2025,Falcon 9,Starlink: Group 11-23,16100,LEO,LEO (Starlink)
-2025-11-02,05:09:00,2025,Falcon 9,Bandwagon-4 (18 payloads smallsat rideshare)[80][219],0,LEO,LEO (Other)
+2025-11-02,05:09:00,2025,Falcon 9,Bandwagon-4 (18 payloads smallsat rideshare)[82][221],0,LEO,LEO (Other)
 2025-11-06,01:31:00,2025,Falcon 9,Starlink: Group 6-81,16675,LEO,LEO (Starlink)
 2025-11-06,21:13:00,2025,Falcon 9,Starlink: Group 11-14,16100,LEO,LEO (Starlink)
 2025-11-09,08:10:00,2025,Falcon 9,Starlink: Group 10-51,16675,LEO,LEO (Starlink)
 2025-11-11,03:21:00,2025,Falcon 9,Starlink: Group 6-87,16675,LEO,LEO (Starlink)
 2025-11-15,03:08:00,2025,Falcon 9,Starlink: Group 6-89,16675,LEO,LEO (Starlink)
 2025-11-15,06:44:00,2025,Falcon 9,Starlink: Group 6-85,16675,LEO,LEO (Starlink)
-2025-11-17,05:21:00,2025,Falcon 9,Sentinel-6B[227],1440,LEO,LEO (Other)
+2025-11-17,05:21:00,2025,Falcon 9,Sentinel-6B[229],1440,LEO,LEO (Other)
 2025-11-19,00:12:00,2025,Falcon 9,Starlink: Group 6-94,16675,LEO,LEO (Starlink)
 2025-11-21,03:39:00,2025,Falcon 9,Starlink: Group 6-78,16675,LEO,LEO (Starlink)
 2025-11-22,07:53:00,2025,Falcon 9,Starlink: Group 6-79,16675,LEO,LEO (Starlink)
 2025-11-23,08:48:00,2025,Falcon 9,Starlink: Group 11-30,16100,LEO,LEO (Starlink)
-2025-11-28,18:44:00,2025,Falcon 9,Transporter-15 (140 payloads smallsat rideshare)[80],0,SSO,SSO (Other)
+2025-11-28,18:44:00,2025,Falcon 9,Transporter-15 (140 payloads smallsat rideshare)[82],0,SSO,SSO (Other)
 2025-12-01,07:44:00,2025,Falcon 9,Starlink: Group 6-86,16675,LEO,LEO (Starlink)
 2025-12-02,05:28:00,2025,Falcon 9,Starlink: Group 15-10,15525,LEO,LEO (Starlink)
 2025-12-02,22:18:00,2025,Falcon 9,Starlink: Group 6-95,16675,LEO,LEO (Starlink)
 2025-12-04,20:42:00,2025,Falcon 9,Starlink: Group 11-25,16100,LEO,LEO (Starlink)
 2025-12-07,17:58:00,2025,Falcon 9,Starlink: Group 11-15,16100,LEO,LEO (Starlink)
 2025-12-08,22:26:00,2025,Falcon 9,Starlink: Group 6-92,16675,LEO,LEO (Starlink)
-2025-12-09,19:16:00,2025,Falcon 9,NROL-77[241][242],0,LEO,LEO (Other)
+2025-12-09,19:16:00,2025,Falcon 9,NROL-77[243][244],0,LEO,LEO (Other)
 2025-12-10,11:40:00,2025,Falcon 9,Starlink: Group 15-11,15525,LEO,LEO (Starlink)
 2025-12-11,22:01:00,2025,Falcon 9,Starlink: Group 6-90,16675,LEO,LEO (Starlink)
 2025-12-14,05:49:00,2025,Falcon 9,Starlink: Group 15-12,15525,LEO,LEO (Starlink)
@@ -649,7 +649,7 @@ S5[393]",4850,GTO,GTO/GEO
 2026-03-20,21:51:00,2026,Falcon 9,Starlink: Group 17-15,14375,SSO,SSO (Starlink)
 2026-03-22,14:47:00,2026,Falcon 9,Starlink: Group 10-62,16675,LEO,LEO (Starlink)
 2026-03-26,23:03:00,2026,Falcon 9,Starlink: Group 17-17,14375,SSO,SSO (Starlink)
-2026-03-30,11:02:00,2026,Falcon 9,Transporter-16 (119 payloads smallsat rideshare)[80],0,SSO,SSO (Other)
+2026-03-30,11:02:00,2026,Falcon 9,Transporter-16 (119 payloads smallsat rideshare)[82],0,SSO,SSO (Other)
 2026-03-30,21:15:00,2026,Falcon 9,Starlink: Group 10-44,16675,LEO,LEO (Starlink)
 2026-04-02,11:55:00,2026,Falcon 9,Starlink: Group 10-58,16675,LEO,LEO (Starlink)
 2026-04-07,02:50:00,2026,Falcon 9,Starlink: Group 17-35,14375,SSO,SSO (Starlink)
@@ -670,7 +670,7 @@ S5[393]",4850,GTO,GTO/GEO
 2026-05-15,22:05:00,2026,Falcon 9,SpaceX CRS-34 (Cargo Dragon C209-6),2948,LEO (ISS),LEO (Other)
 2026-05-20,02:46:00,2026,Falcon 9,Starlink: Group 17-42,13800,SSO,SSO (Starlink)
 2026-05-21,10:04:00,2026,Falcon 9,Starlink: Group 10-31,16675,LEO,LEO (Starlink)
-2026-05-22,22:30:00,2026,Block 3 Starship,20 Starlink simulator satellites and 2 modified Starlink V3[66],37500,Transatmospheric,Other
+2026-05-22,22:30:00,2026,Block 3 Starship,20 Starlink simulator satellites and 2 modified Starlink V3[67],37500,Transatmospheric,Transatmospheric
 2026-05-25,11:48:00,2026,Falcon 9,Starlink: Group 10-47,16675,LEO,LEO (Starlink)
 2026-05-26,14:50:00,2026,Falcon 9,Starlink: Group 17-37,13800,SSO,SSO (Starlink)
 2026-05-29,12:57:00,2026,Falcon 9,Starlink: Group 10-53,16675,LEO,LEO (Starlink)
@@ -691,9 +691,29 @@ S5[393]",4850,GTO,GTO/GEO
 2026-06-29,02:25:00,2026,Falcon 9,SXM-11,7000,GTO,GTO/GEO
 2026-07-02,02:58:00,2026,Falcon 9,Starlink: Group 17-46,13800,SSO,SSO (Starlink)
 2026-07-05,10:50:00,2026,Falcon 9,Starlink: Group 10-50,16675,LEO,LEO (Starlink)
-2026-07-07,07:12:00,2026,Falcon 9,Transporter-17 (81 payloads smallsat rideshare)[80],0,SSO,SSO (Other)
+2026-07-07,07:12:00,2026,Falcon 9,Transporter-17 (81 payloads smallsat rideshare)[82],0,SSO,SSO (Other)
 2026-07-09,09:25:00,2026,Falcon 9,Starlink: Group 10-42,16675,LEO,LEO (Starlink)
 2026-07-11,03:01:00,2026,Falcon 9,Starlink: Group 17-48,13800,SSO,SSO (Starlink)
 2026-07-14,01:28:00,2026,Falcon 9,Starlink: Group 15-14,15525,LEO,LEO (Starlink)
 2026-07-14,09:10:00,2026,Falcon 9,Starlink: Group 10-45,16675,LEO,LEO (Starlink)
 2026-07-16,20:32:00,2026,Falcon 9,SDA Tranche 1 Transport Layer E (21 satellites),0,Polar LEO,LEO (Other)
+2026-07-21,14:49:00,2026,Falcon 9,Starlink: Group 17-39,13800,SSO,SSO (Starlink)
+2026-07-21,21:15:00,2026,Falcon 9,Mission Robotic Vehicle (MRV) × 1[345]Mission Extension Pod (MEP) × 3,4200,GTO,GTO/GEO
+2026-07-24,22:51:00,2026,Block 3 Starship,20 Starlink V3[76],34100,Transatmospheric,Transatmospheric
+2026-07-25,15:51:00,2026,Falcon 9,Starlink: Group 17-51,13800,SSO,SSO (Starlink)
+2026-07-30,07:10:00,2026,Falcon 9,NROL-95,0,LEO,LEO (Other)
+2026-08-01,03:08:00,2026,Falcon 9,Starlink: Group 17-52,13800,SSO,SSO (Starlink)
+2026-08-04,17:05:00,2026,Falcon 9,Starlink: Group 17-53,13800,SSO,SSO (Starlink)
+2026-08-05,07:49:00,2026,Falcon 9,BlueBird Block 2 #11-13 (3 satellites),13500,LEO,LEO (Other)
+2026-08-08,16:35:00,2026,Falcon 9,Starlink: Group 17-38,13800,SSO,SSO (Starlink)
+2026-08-11,15:58:00,2026,Falcon 9,Starlink: Group 10-19,16675,LEO,LEO (Starlink)
+2026-08-12,04:46:00,2026,Falcon 9,Starlink: Group 17-49,13800,SSO,SSO (Starlink)
+2026-08-16,01:12:00,2026,Falcon 9,Globalstar-2R M104–111 (8 satellites),4000,LEO,LEO (Other)
+2026-08-16,01:50:00,2026,Falcon 9,USSF-366 (R-1) (~23 Starshield satellites),0,LEO,LEO (Other)
+2026-08-19,04:01:00,2026,Falcon 9,Starlink: Group 17-50,13800,SSO,SSO (Starlink)
+2026-08-21,15:14:00,2026,Falcon 9,Starlink: Group 10-39,16675,LEO,LEO (Starlink)
+2026-08-22,07:25:00,2026,Falcon 9,Starlink: Group 15-20,15525,LEO,LEO (Starlink)
+2026-08-25,09:33:00,2026,Falcon 9,Starlink: Group 10-49,16675,LEO,LEO (Starlink)
+2026-08-26,09:35:00,2026,Falcon 9,Starlink: Group 15-22,15525,LEO,LEO (Starlink)
+2026-08-30,11:26:00,2026,Falcon Heavy,Nancy Grace Roman Space Telescope,9174,Sun–Earth L2,Other
+2026-09-02,08:42:00,2026,Falcon 9,Starlink: Group 15-23,15525,LEO,LEO (Starlink)

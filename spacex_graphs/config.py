@@ -31,7 +31,7 @@ ORBIT_MAPPING = {
     "GTO[399]": "GTO/GEO",
     "HEO for P/2 orbit": "Other",
     "Heliocentric": "Heliocentric",
-    "Heliocentric0.99-1.67 AU[251](close to Mars transfer orbit)": "Heliocentric",
+    "Heliocentric0.99–1.67 AU(close to Mars transfer orbit)": "Heliocentric",
     "LEO": "LEO (Other)",
     "LEO (ISS)": "LEO (Other)",
     "LEO (Starlink)": "LEO (Starlink)",
@@ -43,8 +43,15 @@ ORBIT_MAPPING = {
     "Retrograde LEO": "LEO (Other)",
     "SSO": "SSO (Other)",
     "SSO (Starlink)": "SSO (Starlink)",
-    "Sun-Earth L1 insertion": "Other",
-    "Sun-Earth L2 injection": "Other",
+    "Sub-orbital": "Transatmospheric",
+    "Suborbital": "Transatmospheric",
+    "Sun–Earth L1 insertion": "Other",
+    "Sun–Earth L2 injection": "Other",
     "Transatmospheric": "Transatmospheric",
     "—": "Transatmospheric",  # Starship test flights often have — for orbit
+    # Starship flights that carried Starlink satellites (or simulators) on a
+    # suborbital trajectory: the payload never reached orbit, so it counts as
+    # Transatmospheric rather than as a Starlink orbit
+    "Suborbital (Starlink)": "Transatmospheric",
+    "Transatmospheric (Starlink)": "Transatmospheric",
 }

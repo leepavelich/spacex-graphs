@@ -137,7 +137,8 @@ def _parse_starship_row(cols) -> Optional[LaunchRecord]:
     else:
         payload_mass = 0
 
-    if payload == "—" or not payload:
+    # An empty payload cell renders as "—" followed by a hidden "N/a" sort key
+    if payload.startswith("—") or not payload:
         payload = "Starship Test"
 
     return LaunchRecord(
