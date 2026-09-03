@@ -9,14 +9,25 @@ from spacex_graphs.config import MIN_CUMULATIVE_YEAR, ORBIT_MAPPING
 
 
 def clean_orbit_category(orbit):
-    """Cleans the orbit category by removing square brackets and mapping to a category"""
+    """Cleans the orbit category by removing square brackets and mapping to a category.
+
+    Orbits not in ORBIT_MAPPING fall back to a LEO category when they are
+    clearly a low Earth orbit variant (e.g. "Elliptical LEO"), otherwise "Other".
+    """
     orbit_cleaned = re.sub(r"\[.*?\]", "", orbit).strip()
-    return ORBIT_MAPPING.get(orbit_cleaned, "Other")
+    if orbit_cleaned in ORBIT_MAPPING:
+        return ORBIT_MAPPING[orbit_cleaned]
+    if re.search(r"\bLEO\b|low earth orbit", orbit_cleaned, flags=re.IGNORECASE):
+        return "LEO (Starlink)" if "(Starlink)" in orbit_cleaned else "LEO (Other)"
+    return "Other"
 
 
 def categorize_starlink(payload, orbit):
-    """Categorizes the orbit as Starlink if the payload contains 'Starlink'"""
-    if "Starlink" in payload:
+    """Categorizes the orbit as Starlink if the payload contains 'Starlink'.
+
+    The tag is not doubled when Wikipedia already labels the orbit "(Starlink)".
+    """
+    if "Starlink" in payload and "(Starlink)" not in orbit:
         return f"{orbit} (Starlink)"
     return orbit
 

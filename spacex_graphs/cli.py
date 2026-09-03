@@ -14,7 +14,11 @@ from spacex_graphs.parsing import parse_launch_page
 def _fetch_and_parse(url):
     """Fetches one page (using the HTTP cache) and parses its launch records."""
     content, not_modified = cache.fetch_with_cache(url)
-    return parse_launch_page(url, content), not_modified
+    records = parse_launch_page(url, content)
+    if not records:
+        # Most likely the table layout changed and the row parser rejected every row
+        print(f"  ! WARNING: no launches parsed from {WIKIPEDIA_PAGES.get(url, url)}")
+    return records, not_modified
 
 
 def load_launch_records():
