@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import matplotlib.pyplot as plt
@@ -11,24 +12,40 @@ from spacex_graphs.config import CACHE_DIR, OUTPUT_DIR, WIKIPEDIA_PAGES
 from spacex_graphs.parsing import parse_launch_page
 
 
+class EmptyPageError(RuntimeError):
+    """Raised when a Wikipedia page yields no launch records."""
+
+
 def _fetch_and_parse(url):
     """Fetches one page (using the HTTP cache) and parses its launch records."""
     content, not_modified = cache.fetch_with_cache(url)
     records = parse_launch_page(url, content)
-    if not records:
-        # Most likely the table layout changed and the row parser rejected every row
-        print(f"  ! WARNING: no launches parsed from {WIKIPEDIA_PAGES.get(url, url)}")
     return records, not_modified
 
 
 def load_launch_records():
     """Fetches and parses all Wikipedia pages concurrently.
 
-    Returns (records, all_pages_unchanged).
+    Returns (records, all_pages_unchanged). Raises EmptyPageError if any page
+    parses to zero records, which almost always means Wikipedia changed the
+    table layout; continuing would publish graphs with that page's launches
+    silently missing.
     """
     print("Fetching Wikipedia pages:")
     with ThreadPoolExecutor(max_workers=5) as executor:
         results = list(executor.map(_fetch_and_parse, WIKIPEDIA_PAGES))
+
+    empty_pages = [
+        WIKIPEDIA_PAGES[url]
+        for url, (page_records, _) in zip(WIKIPEDIA_PAGES, results)
+        if not page_records
+    ]
+    if empty_pages:
+        raise EmptyPageError(
+            "no launches parsed from: "
+            + ", ".join(empty_pages)
+            + " (has the Wikipedia table layout changed?)"
+        )
 
     records = [record for page_records, _ in results for record in page_records]
     all_unchanged = all(not_modified for _, not_modified in results)
@@ -77,4 +94,8 @@ def main():
         "--output", action="store_true", help="Output the plots as SVG files"
     )
     args = parser.parse_args()
-    run(args.output)
+    try:
+        run(args.output)
+    except EmptyPageError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        sys.exit(1)

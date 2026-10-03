@@ -54,9 +54,11 @@ def plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit):
         "Payload Mass to Type of Orbit by Year", "Year", "Payload Mass (kg)"
     )
     ordered_columns = list(ORBIT_COLORS)
+    # reindex (not [ordered_columns]) so a category with no launches yet is
+    # plotted as zero instead of raising KeyError
     pivot_df = payload_mass_by_year_orbit.pivot(
         index="Year", columns="Orbit", values="PayloadMass"
-    ).fillna(0)[ordered_columns]
+    ).reindex(columns=ordered_columns, fill_value=0).fillna(0)
 
     pivot_df.plot(
         kind="bar",
