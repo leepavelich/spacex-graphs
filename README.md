@@ -1,16 +1,16 @@
 # SpaceX Mass-to-Orbit Graphs
 
-This project contains a Python script that fetches data about SpaceX launches from Wikipedia, analyzes the payload mass to different orbits over the years, and provides a cumulative sum of the payload mass to orbit.
+This project contains a Python script that fetches data about SpaceX launches from Wikipedia, analyzes the payload mass launched to different destinations over the years, and provides a cumulative sum of the payload mass launched. Suborbital flights, such as Starship test flights carrying Starlink simulators, count as launched mass under the Transatmospheric category.
 
 The scraper reads Wikipedia's year-specific Falcon launch archives as well as the current Falcon and Starship launch pages.
 
-## Payload Mass to Orbit by Year
+## Payload Mass Launched by Year and Destination
 
-![Payload Mass to Orbit by Year](outputs/payload_mass_to_orbit_by_year.svg)
+![Payload Mass Launched by Year and Destination](outputs/payload_mass_to_orbit_by_year.svg)
 
-## Cumulative Payload Mass to Orbit (2017 onwards)
+## Cumulative Payload Mass Launched (2017 onwards)
 
-![Cumulative Payload Mass to Orbit](outputs/cumulative_payload_mass_to_orbit.svg)
+![Cumulative Payload Mass Launched](outputs/cumulative_payload_mass_to_orbit.svg)
 
 ## Setup and Installation
 
@@ -78,8 +78,8 @@ python3 graphs.py --output
 
 The script generates two graphs:
 
-- `payload_mass_to_orbit_by_year.svg`: A stacked bar chart showing the payload mass sent to various orbit types by year
-- `cumulative_payload_mass_to_orbit.svg`: A line chart displaying the cumulative payload mass sent to orbit starting from 2017
+- `payload_mass_to_orbit_by_year.svg`: A stacked bar chart showing the payload mass launched to each destination by year
+- `cumulative_payload_mass_to_orbit.svg`: A line chart displaying the cumulative payload mass launched starting from 2017
 
 When run with `--output`, the graphs are saved as SVG files in the `outputs/` directory. Without this flag, graphs are displayed on screen.
 

@@ -54,9 +54,13 @@ def create_figure(title, xlabel, ylabel, size=(10, 7)):
 
 
 def plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit):
-    """Plots the payload mass to orbit by year as a stacked bar chart."""
+    """Plots launched payload mass by year and destination as a stacked bar chart.
+
+    Includes suborbital (Transatmospheric) payloads, which is why the title
+    says "launched" rather than "to orbit".
+    """
     fig, ax = create_figure(
-        "Payload Mass to Type of Orbit by Year", "Year", "Payload Mass (kg)"
+        "Payload Mass Launched by Year and Destination", "Year", "Payload Mass (kg)"
     )
     ordered_columns = list(ORBIT_COLORS)
     # reindex (not [ordered_columns]) so a category with no launches yet is
@@ -87,16 +91,16 @@ def plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit):
             fontsize=8,
         )
 
-    ax.legend(title="Orbit Type")
+    ax.legend(title="Destination")
     ax.set_xlabel("")
     fig.tight_layout()
     return fig
 
 
 def plot_cumulative_payload_mass_to_orbit(df_filtered):
-    """Plots the cumulative payload mass to orbit by year as line charts."""
+    """Plots cumulative launched payload mass by year as line charts."""
     fig, ax = create_figure(
-        "Cumulative Payload Mass to Orbit By Year",
+        "Cumulative Payload Mass Launched by Year",
         "",
         "Cumulative Payload Mass (kg)",
     )
