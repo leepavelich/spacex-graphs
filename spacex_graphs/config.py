@@ -40,8 +40,27 @@ MIN_CUMULATIVE_YEAR = 2017
 # tiny next to recent years, so they shouldn't compete for attention
 HIGHLIGHT_FROM_YEAR = 2020
 
-# Maps raw Wikipedia orbit descriptions to standardized categories. Footnote
-# markers like "[338]" are stripped before lookup, so keys never include them.
+# The orbit categories the graphs show, in legend order. Every category
+# produced by ORBIT_MAPPING or transform's fallbacks must be one of these, and
+# plotting must give each a color; the tests check both.
+LEO_STARLINK = "LEO (Starlink)"
+LEO_OTHER = "LEO (Other)"
+OTHER_ORBIT = "Other"
+ORBIT_CATEGORIES = (
+    LEO_STARLINK,
+    LEO_OTHER,
+    "SSO (Starlink)",
+    "SSO (Other)",
+    "MEO",
+    "GTO/GEO",
+    "BLT",
+    "Heliocentric",
+    "Transatmospheric",
+    OTHER_ORBIT,
+)
+
+# Maps raw Wikipedia orbit descriptions to the categories above. Footnote
+# markers like "[338]" are removed before lookup, so keys never include them.
 ORBIT_MAPPING = {
     "Ballistic lunar transfer (BLT)": "BLT",
     "BLT": "BLT",
@@ -57,6 +76,7 @@ ORBIT_MAPPING = {
     "MEO": "MEO",
     "Polar LEO": "LEO (Other)",
     "Polar orbit LEO": "LEO (Other)",
+    "Polar (Retrograde)": "LEO (Other)",  # Fram2: a crewed polar LEO flight
     "Retrograde LEO": "LEO (Other)",
     "SSO": "SSO (Other)",
     "SSO (Starlink)": "SSO (Starlink)",
@@ -70,5 +90,6 @@ ORBIT_MAPPING = {
     # suborbital trajectory: the payload never reached orbit, so it counts as
     # Transatmospheric rather than as a Starlink orbit
     "Suborbital (Starlink)": "Transatmospheric",
+    "Sub-orbital (Starlink)": "Transatmospheric",
     "Transatmospheric (Starlink)": "Transatmospheric",
 }

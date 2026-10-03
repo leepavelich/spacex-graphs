@@ -10,21 +10,27 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
-from spacex_graphs.config import HIGHLIGHT_FROM_YEAR
+from spacex_graphs.config import HIGHLIGHT_FROM_YEAR, ORBIT_CATEGORIES
 
-# Colors for each orbit category, in legend order
-ORBIT_COLORS = {
-    "LEO (Starlink)": "chocolate",
-    "LEO (Other)": "coral",
-    "SSO (Starlink)": "darkgoldenrod",
-    "SSO (Other)": "orange",
-    "MEO": "orchid",
-    "GTO/GEO": "yellowgreen",
-    "BLT": "gold",
-    "Heliocentric": "wheat",
-    "Transatmospheric": "lightblue",
-    "Other": "lightgray",
-}
+# Colors for each orbit category, in config.ORBIT_CATEGORIES (legend) order
+ORBIT_COLORS = dict(
+    zip(
+        ORBIT_CATEGORIES,
+        [
+            "chocolate",
+            "coral",
+            "darkgoldenrod",
+            "orange",
+            "orchid",
+            "yellowgreen",
+            "gold",
+            "wheat",
+            "lightblue",
+            "lightgray",
+        ],
+        strict=True,
+    )
+)
 
 # Most recent years get the first colors. This eight-hue order is validated
 # for colorblind-safe separation between adjacent slots. Years before
@@ -69,6 +75,10 @@ def plot_payload_mass_to_orbit_by_year(
     fig, ax = create_figure(
         "Payload Mass Launched by Year and Destination", "Year", "Payload Mass (kg)"
     )
+    unknown = set(payload_mass_by_year_orbit["Orbit"]) - set(ORBIT_COLORS)
+    if unknown:
+        # reindex below would silently drop these categories' mass
+        raise ValueError(f"orbit categories with no color: {sorted(unknown)}")
     ordered_columns = list(ORBIT_COLORS)
     # reindex (not [ordered_columns]) so a category with no launches yet is
     # plotted as zero instead of raising KeyError

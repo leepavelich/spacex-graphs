@@ -105,6 +105,27 @@ class TestDataFrames(unittest.TestCase):
         self.assertEqual(grouped.iloc[0]["PayloadMass"], 33000)
 
 
+class TestOrbitCategories(unittest.TestCase):
+    def test_every_mapping_value_is_a_known_category(self):
+        from spacex_graphs.config import ORBIT_CATEGORIES, ORBIT_MAPPING
+
+        unknown = sorted(set(ORBIT_MAPPING.values()) - set(ORBIT_CATEGORIES))
+        self.assertEqual(unknown, [])
+
+    def test_fallbacks_are_known_categories(self):
+        from spacex_graphs.config import ORBIT_CATEGORIES
+
+        for orbit in ("Elliptical LEO", "Elliptical LEO (Starlink)", "Molniya", ""):
+            with self.subTest(orbit=orbit):
+                self.assertIn(clean_orbit_category(orbit), ORBIT_CATEGORIES)
+
+    def test_every_category_has_a_color_in_legend_order(self):
+        from spacex_graphs.config import ORBIT_CATEGORIES
+        from spacex_graphs.plotting import ORBIT_COLORS
+
+        self.assertEqual(tuple(ORBIT_COLORS), ORBIT_CATEGORIES)
+
+
 class TestOrbitMapping(unittest.TestCase):
     def test_every_mapping_key_is_reachable(self):
         # clean_orbit_category strips "[...]" footnotes before the lookup, so a

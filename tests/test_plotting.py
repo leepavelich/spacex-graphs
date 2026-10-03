@@ -45,6 +45,15 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
         legend_labels = [t.get_text() for t in legend.get_texts()]
         self.assertEqual(legend_labels, list(ORBIT_COLORS))
 
+    def test_category_without_a_color_is_an_error_not_dropped(self):
+        frame = payload_mass_by_year_orbit(
+            build_dataframe([_record(2015, "LEO", "CRS-6", 2000)])
+        )
+        frame.loc[0, "Orbit"] = "Lunar"
+        with self.assertRaises(ValueError) as ctx:
+            plot_payload_mass_to_orbit_by_year(frame)
+        self.assertIn("Lunar", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

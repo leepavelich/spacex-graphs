@@ -6,22 +6,29 @@ from collections.abc import Sequence
 
 import pandas as pd
 
-from spacex_graphs.config import MIN_CUMULATIVE_YEAR, ORBIT_MAPPING
+from spacex_graphs.config import (
+    LEO_OTHER,
+    LEO_STARLINK,
+    MIN_CUMULATIVE_YEAR,
+    ORBIT_MAPPING,
+    OTHER_ORBIT,
+)
 from spacex_graphs.parsing import LaunchRecord
 
 
 def clean_orbit_category(orbit: str) -> str:
-    """Cleans the orbit category by removing square brackets and mapping to a category.
+    """Maps a raw orbit description to one of config.ORBIT_CATEGORIES.
 
-    Orbits not in ORBIT_MAPPING fall back to a LEO category when they are
-    clearly a low Earth orbit variant (e.g. "Elliptical LEO"), otherwise "Other".
+    Footnote markers are removed first. Orbits not in ORBIT_MAPPING fall back to
+    a LEO category when they are clearly a low Earth orbit variant (e.g.
+    "Elliptical LEO"), and to "Other" otherwise.
     """
     orbit_cleaned = re.sub(r"\[.*?\]", "", orbit).strip()
     if orbit_cleaned in ORBIT_MAPPING:
         return ORBIT_MAPPING[orbit_cleaned]
     if re.search(r"\bLEO\b|low earth orbit", orbit_cleaned, flags=re.IGNORECASE):
-        return "LEO (Starlink)" if "(Starlink)" in orbit_cleaned else "LEO (Other)"
-    return "Other"
+        return LEO_STARLINK if "(Starlink)" in orbit_cleaned else LEO_OTHER
+    return OTHER_ORBIT
 
 
 def categorize_starlink(payload: str, orbit: str) -> str:
