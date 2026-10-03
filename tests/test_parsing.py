@@ -103,6 +103,32 @@ class TestParsePayloadMassText(unittest.TestCase):
     def test_approximate_mass(self):
         self.assertEqual(parse_payload_mass_text("~16,000 kg (35,000 lb)[54]"), 16000)
 
+    def test_to_range_returns_average(self):
+        self.assertEqual(parse_payload_mass_text("5000 to 6000 kg"), 5500)
+
+    def test_footnote_digits_are_not_mass(self):
+        self.assertEqual(parse_payload_mass_text("Classified[12]"), 0)
+        self.assertEqual(parse_payload_mass_text("Unknown[232]"), 0)
+        self.assertEqual(parse_payload_mass_text("[12] 5,000 kg"), 5000)
+
+    def test_unrelated_numbers_are_ignored_when_kg_present(self):
+        self.assertEqual(parse_payload_mass_text("5,000 kg (2019-2020 est.)"), 5000)
+        self.assertEqual(parse_payload_mass_text("2 × 1,200 kg"), 1200)
+
+    def test_space_separated_thousands(self):
+        self.assertEqual(parse_payload_mass_text("16 000 kg"), 16000)
+        self.assertEqual(parse_payload_mass_text("16\u00a0000 kg"), 16000)
+
+    def test_kg_figure_wins_over_leading_pounds(self):
+        self.assertEqual(parse_payload_mass_text("75,200 lb (34,100 kg)"), 34100)
+
+    def test_pounds_only_is_converted(self):
+        self.assertEqual(parse_payload_mass_text("2,500 lb"), 1134)
+
+    def test_decimal_kg(self):
+        self.assertEqual(parse_payload_mass_text("0.5 kg"), 0)
+        self.assertEqual(parse_payload_mass_text("12.6 kg"), 13)
+
     def test_unparseable_returns_zero(self):
         self.assertEqual(parse_payload_mass_text("—"), 0)
         self.assertEqual(parse_payload_mass_text(""), 0)

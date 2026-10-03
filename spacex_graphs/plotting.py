@@ -2,12 +2,15 @@
 
 import calendar
 import datetime
+from typing import Any
 
 import matplotlib.pyplot as plt
+import pandas as pd
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
 from spacex_graphs.config import HIGHLIGHT_FROM_YEAR
-from spacex_graphs.transform import add_end_of_period_entries
 
 # Colors for each orbit category, in legend order
 ORBIT_COLORS = {
@@ -40,7 +43,9 @@ YEAR_COLORS = [
 OLDER_YEARS_COLOR = "#898781"
 
 
-def create_figure(title, xlabel, ylabel, size=(10, 7)):
+def create_figure(
+    title: str, xlabel: str, ylabel: str, size: tuple[float, float] = (10, 7)
+) -> tuple[Figure, Axes]:
     """Creates a figure with the given title, x label, and y label"""
     fig, ax = plt.subplots(figsize=size)
     ax.set_title(title)
@@ -53,17 +58,27 @@ def create_figure(title, xlabel, ylabel, size=(10, 7)):
     return fig, ax
 
 
-def plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit):
-    """Plots the payload mass to orbit by year as a stacked bar chart."""
+def plot_payload_mass_to_orbit_by_year(
+    payload_mass_by_year_orbit: pd.DataFrame,
+) -> Figure:
+    """Plots launched payload mass by year and destination as a stacked bar chart.
+
+    Includes suborbital (Transatmospheric) payloads, which is why the title
+    says "launched" rather than "to orbit".
+    """
     fig, ax = create_figure(
-        "Payload Mass to Type of Orbit by Year", "Year", "Payload Mass (kg)"
+        "Payload Mass Launched by Year and Destination", "Year", "Payload Mass (kg)"
     )
     ordered_columns = list(ORBIT_COLORS)
     # reindex (not [ordered_columns]) so a category with no launches yet is
     # plotted as zero instead of raising KeyError
-    pivot_df = payload_mass_by_year_orbit.pivot(
-        index="Year", columns="Orbit", values="PayloadMass"
-    ).reindex(columns=ordered_columns, fill_value=0).fillna(0)
+    pivot_df = (
+        payload_mass_by_year_orbit.pivot(
+            index="Year", columns="Orbit", values="PayloadMass"
+        )
+        .reindex(columns=ordered_columns, fill_value=0)
+        .fillna(0)
+    )
 
     pivot_df.plot(
         kind="bar",
@@ -72,60 +87,59 @@ def plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit):
         ax=ax,
     )
 
-    # A fixed amount of padding above the bars for the annotations
-    fixed_padding = 10000
-
-    # Annotate each bar with the total payload mass for the year
+    # Label each bar with the year's total, a few points above the bar so the
+    # gap looks the same whatever the axis scale
     for i, total in enumerate(pivot_df.sum(axis=1)):
-        ax.text(
-            i,
-            total + fixed_padding,
+        ax.annotate(
             f"{int(total):,}",
+            xy=(i, total),
+            xytext=(0, 2),
+            textcoords="offset points",
             ha="center",
             va="bottom",
             color="grey",
             fontsize=8,
         )
 
-    ax.legend(title="Orbit Type")
+    ax.legend(title="Destination")
     ax.set_xlabel("")
     fig.tight_layout()
     return fig
 
 
-def plot_cumulative_payload_mass_to_orbit(df_filtered):
-    """Plots the cumulative payload mass to orbit by year as line charts."""
+def plot_cumulative_payload_mass_to_orbit(
+    cumulative: pd.DataFrame, today: datetime.date
+) -> Figure:
+    """Plots cumulative launched payload mass by year as line charts.
+
+    Expects the frame from transform.build_cumulative_frame.
+    """
     fig, ax = create_figure(
-        "Cumulative Payload Mass to Orbit By Year",
+        "Cumulative Payload Mass Launched by Year",
         "",
         "Cumulative Payload Mass (kg)",
     )
-    df_extended = add_end_of_period_entries(df_filtered)
-
-    sorted_years = sorted(df_extended["Year"].unique(), reverse=True)
+    sorted_years = sorted(cumulative["Year"].unique(), reverse=True)
     highlighted_years = [y for y in sorted_years if y >= HIGHLIGHT_FROM_YEAR]
-    year_color_map = dict(zip(highlighted_years, YEAR_COLORS))
+    # Not strict: highlighted years beyond the palette deliberately fall through
+    year_color_map = dict(zip(highlighted_years, YEAR_COLORS, strict=False))
     older_years = [y for y in sorted_years if y not in year_color_map]
     if len(older_years) == 1:
         older_label = str(older_years[0])
     elif older_years:
         older_label = f"{min(older_years)}–{max(older_years)}"
 
-    for year, group_data in df_extended.groupby("Year"):
-        group_data = group_data.sort_values("DateTime")
-        group_data["DayOfYear"] = group_data["DateTime"].dt.dayofyear
-        cumulative_mass = group_data["PayloadMass"].cumsum()
-
+    for year, points in cumulative.groupby("Year"):
         if year in year_color_map:
-            style = {"label": str(year), "color": year_color_map[year]}
+            style: dict[str, Any] = {"label": str(year), "color": year_color_map[year]}
         else:
             # Only the newest of the older years carries the shared legend entry
             label = older_label if year == older_years[0] else "_nolegend_"
             style = {"label": label, "color": OLDER_YEARS_COLOR, "linewidth": 1}
 
         ax.plot(
-            group_data["DayOfYear"],
-            cumulative_mass,
+            points["DayOfYear"],
+            points["CumulativePayloadMass"],
             drawstyle="steps-post",
             **style,
         )
@@ -138,8 +152,7 @@ def plot_cumulative_payload_mass_to_orbit(df_filtered):
     ax.set_xticklabels([date.strftime("%b 1") for date in months_to_label], rotation=0)
 
     # Set the x-axis limit to the maximum day of the year
-    current_year = datetime.datetime.now().year
-    days_in_year = 366 if calendar.isleap(current_year) else 365
+    days_in_year = 366 if calendar.isleap(today.year) else 365
     ax.set_xlim(-14, days_in_year + 7)
 
     fig.tight_layout()

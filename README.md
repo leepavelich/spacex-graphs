@@ -1,87 +1,56 @@
 # SpaceX Mass-to-Orbit Graphs
 
-This project contains a Python script that fetches data about SpaceX launches from Wikipedia, analyzes the payload mass to different orbits over the years, and provides a cumulative sum of the payload mass to orbit.
+This project contains a Python script that fetches data about SpaceX launches from Wikipedia, analyzes the payload mass launched to different destinations over the years, and provides a cumulative sum of the payload mass launched. Suborbital flights, such as Starship test flights carrying Starlink simulators, count as launched mass under the Transatmospheric category.
 
 The scraper reads Wikipedia's year-specific Falcon launch archives as well as the current Falcon and Starship launch pages.
 
-## Payload Mass to Orbit by Year
+## Payload Mass Launched by Year and Destination
 
-![Payload Mass to Orbit by Year](outputs/payload_mass_to_orbit_by_year.svg)
+![Payload Mass Launched by Year and Destination](outputs/payload_mass_to_orbit_by_year.svg)
 
-## Cumulative Payload Mass to Orbit (2017 onwards)
+## Cumulative Payload Mass Launched (2017 onwards)
 
-![Cumulative Payload Mass to Orbit](outputs/cumulative_payload_mass_to_orbit.svg)
+![Cumulative Payload Mass Launched](outputs/cumulative_payload_mass_to_orbit.svg)
 
-## Setup and Installation
+## Running with Docker (recommended)
 
-### Option 1: Using Docker (Recommended)
-
-The easiest way to run this project is using Docker, which handles all dependencies automatically.
-
-#### Prerequisites
-- Docker and Docker Compose installed on your system
-
-#### Running with Docker
+Docker installs the pinned dependencies for you. You need Docker with Docker Compose.
 
 ```bash
-# Generate graphs and save as SVG files to outputs/ directory
-docker compose run graphs --output
-
-# Generate graphs and display on screen (without saving)
-docker compose run graphs
+docker compose run --rm graphs
 ```
 
-The Docker container will automatically:
-- Install all required dependencies
-- Mount the `outputs/` directory for saving generated graphs
-- Run the script with your specified arguments
+This fetches the Wikipedia pages and saves the graphs and CSV to `outputs/`. A container has no display, so Docker always saves rather than showing the graphs on screen. Downloaded pages are kept in a Docker volume, so later runs only re-download pages that changed.
 
-### Option 2: Local Installation
+## Running locally
 
-If you prefer to run the script locally, you need Python 3.11 or newer (CI and the Docker image use 3.11).
-
-To install the required libraries, run:
+You need Python 3.11 or newer.
 
 ```bash
-pip3 install -r requirements.txt
-```
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-Alternatively, you can install the required libraries individually:
-
-```bash
-pip install requests beautifulsoup4 pandas matplotlib
-```
-
-## Running the Script
-
-### With Docker
-
-```bash
-# Save graphs as SVG files
-docker compose run graphs --output
-
-# Display graphs without saving
-docker compose run graphs
-```
-
-### Without Docker
-
-```bash
-# Display graphs on screen
+# Show the graphs on screen
 python3 graphs.py
 
-# Save graphs as SVG files to outputs/ directory
+# Save the graphs and CSV to outputs/
 python3 graphs.py --output
 ```
 
-### Output
+Add `-q` to print only warnings and errors.
 
-The script generates two graphs:
+## Outputs
 
-- `payload_mass_to_orbit_by_year.svg`: A stacked bar chart showing the payload mass sent to various orbit types by year
-- `cumulative_payload_mass_to_orbit.svg`: A line chart displaying the cumulative payload mass sent to orbit starting from 2017
+With `--output`, the script writes three files to `outputs/`:
 
-When run with `--output`, the graphs are saved as SVG files in the `outputs/` directory. Without this flag, graphs are displayed on screen.
+- `payload_mass_to_orbit_by_year.svg`: a stacked bar chart of payload mass launched to each destination by year
+- `cumulative_payload_mass_to_orbit.svg`: a line chart of cumulative payload mass launched, from 2017 onwards
+- `spacex_launches.csv`: every parsed launch, with its raw and categorized orbit
+
+Downloaded pages are cached in `.cache/`, and Wikipedia is asked only for pages that changed. If neither the launch data nor the date has changed since the last successful run, the script skips regenerating the outputs.
+
+A GitHub Actions workflow runs the script daily and commits any changed outputs, which keeps the graphs above current.
 
 ## Project Structure
 
@@ -95,11 +64,24 @@ When run with `--output`, the graphs are saved as SVG files in the `outputs/` di
 - `output.py` — writes the SVG and CSV files
 - `cli.py` — command-line interface and orchestration
 
-## Running Tests
+## Development
+
+Install the development tools, which include the runtime dependencies:
 
 ```bash
+pip install -r requirements-dev.txt
+```
+
+CI runs these checks on every pull request:
+
+```bash
+ruff check .
+ruff format --check .
+mypy
 python3 -m unittest discover -s tests
 ```
+
+Dependencies are declared in `requirements.in` and `requirements-dev.in` and locked, with hashes, in the matching `.txt` files. To change a dependency, edit the `.in` file and rerun the command shown at the top of its lock file.
 
 ## Contributing
 

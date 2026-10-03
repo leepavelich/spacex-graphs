@@ -30,7 +30,7 @@ class TestFetchWithCache(unittest.TestCase):
         patcher = mock.patch.object(cache, "CACHE_DIR", self._tmp.name)
         patcher.start()
         self.addCleanup(patcher.stop)
-        self.get = self.enterContext(mock.patch.object(cache.requests, "get"))
+        self.get = self.enterContext(mock.patch("spacex_graphs.cache.requests.get"))
 
     def _prime(self, content=b"<html>cached</html>"):
         self.get.return_value = _response(200, content, {"ETag": '"v1"'})
@@ -54,11 +54,15 @@ class TestFetchWithCache(unittest.TestCase):
     def test_network_error_falls_back_to_cache(self):
         self._prime()
         for error in (requests.ConnectionError(), requests.Timeout()):
-            with self.subTest(error=type(error).__name__):
+            with (
+                self.subTest(error=type(error).__name__),
+                self.assertLogs(cache.logger, "WARNING") as logs,
+            ):
                 self.get.side_effect = error
                 self.assertEqual(
                     cache.fetch_with_cache(URL), (b"<html>cached</html>", False)
                 )
+            self.assertIn(type(error).__name__, logs.output[0])
 
     def test_network_error_without_cache_raises(self):
         self.get.side_effect = requests.ConnectionError()
@@ -68,7 +72,11 @@ class TestFetchWithCache(unittest.TestCase):
     def test_server_error_falls_back_to_cache(self):
         self._prime()
         self.get.return_value = _response(503)
-        self.assertEqual(cache.fetch_with_cache(URL), (b"<html>cached</html>", False))
+        with self.assertLogs(cache.logger, "WARNING") as logs:
+            self.assertEqual(
+                cache.fetch_with_cache(URL), (b"<html>cached</html>", False)
+            )
+        self.assertIn("HTTP 503", logs.output[0])
 
     def test_missing_body_sends_no_validators(self):
         self._prime()

@@ -1,0 +1,8 @@
+# Development tools; the runtime pins come from requirements.in
+-r requirements.in
+# Keep shared packages at exactly the runtime lock's versions
+-c requirements.txt
+mypy==2.4.0
+pandas-stubs
+ruff==0.16.10
+types-requests

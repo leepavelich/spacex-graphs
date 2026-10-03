@@ -1,5 +1,7 @@
 """Tests for writing the SVG and CSV artifacts."""
 
+import csv
+import datetime
 import os
 import tempfile
 import unittest
@@ -9,9 +11,11 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
-from spacex_graphs import output  # noqa: E402
+from spacex_graphs import output
+from spacex_graphs.parsing import LaunchRecord
+from spacex_graphs.transform import build_dataframe
 
 
 def _figure():
@@ -26,9 +30,7 @@ def _figure():
 
 def _render_svgs(directory):
     figs = (_figure(), _figure())
-    with mock.patch.object(output, "OUTPUT_DIR", directory), mock.patch.object(
-        output.cache, "write_last_run_date"
-    ):
+    with mock.patch.object(output, "OUTPUT_DIR", directory):
         output.save_plots(*figs)
     plt.close("all")
     contents = {}
@@ -49,6 +51,55 @@ class TestSavePlots(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             for content in _render_svgs(directory).values():
                 self.assertNotIn(b"<dc:date>", content)
+
+
+class TestSaveLaunchesCsv(unittest.TestCase):
+    def test_rows_are_chronological_with_raw_and_categorized_orbits(self):
+        df = build_dataframe(
+            [
+                LaunchRecord(
+                    2026,
+                    "LEO",
+                    "Starlink 9",
+                    17000,
+                    datetime.datetime(2026, 2, 1, 5, 30),
+                    "Falcon 9",
+                ),
+                LaunchRecord(
+                    2025,
+                    "GTO[12]",
+                    "SES",
+                    4000,
+                    datetime.datetime(2025, 7, 4),
+                    "Falcon Heavy",
+                ),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(output, "OUTPUT_DIR", directory):
+                output.save_launches_csv(df)
+            with open(os.path.join(directory, "spacex_launches.csv"), newline="") as f:
+                rows = list(csv.DictReader(f))
+
+        self.assertEqual(
+            list(rows[0]),
+            [
+                "Date",
+                "Time (UTC)",
+                "Year",
+                "Vehicle",
+                "Payload",
+                "Payload Mass (kg)",
+                "Orbit",
+                "Orbit Category",
+            ],
+        )
+        self.assertEqual([row["Date"] for row in rows], ["2025-07-04", "2026-02-01"])
+        self.assertEqual(rows[1]["Time (UTC)"], "05:30:00")
+        self.assertEqual(rows[0]["Orbit"], "GTO[12]")
+        self.assertEqual(rows[0]["Orbit Category"], "GTO/GEO")
+        self.assertEqual(rows[1]["Orbit Category"], "LEO (Starlink)")
+        self.assertEqual(rows[1]["Payload Mass (kg)"], "17000")
 
 
 if __name__ == "__main__":
