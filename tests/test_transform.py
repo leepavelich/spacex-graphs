@@ -99,5 +99,19 @@ class TestDataFrames(unittest.TestCase):
         self.assertEqual(grouped.iloc[0]["PayloadMass"], 33000)
 
 
+class TestOrbitMapping(unittest.TestCase):
+    def test_every_mapping_key_is_reachable(self):
+        # clean_orbit_category strips "[...]" footnotes before the lookup, so a
+        # key containing brackets could never match
+        from spacex_graphs.config import ORBIT_MAPPING
+
+        unreachable = [key for key in ORBIT_MAPPING if "[" in key]
+        self.assertEqual(unreachable, [])
+
+    def test_both_blt_spellings_map_to_blt(self):
+        self.assertEqual(clean_orbit_category("BLT"), "BLT")
+        self.assertEqual(clean_orbit_category("Ballistic lunar transfer (BLT)"), "BLT")
+
+
 if __name__ == "__main__":
     unittest.main()
