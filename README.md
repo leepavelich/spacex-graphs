@@ -38,7 +38,7 @@ The Docker container will automatically:
 
 ### Option 2: Local Installation
 
-If you prefer to run the script locally, make sure you have Python 3 installed on your system.
+If you prefer to run the script locally, you need Python 3.11 or newer (CI and the Docker image use 3.11).
 
 To install the required libraries, run:
 
