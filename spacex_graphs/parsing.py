@@ -49,32 +49,61 @@ def parse_launch_datetime(text) -> Optional[datetime.datetime]:
         return None
 
 
+_NUMBER = r"\d[\d,]*(?:\.\d+)?"
+_RANGE = rf"({_NUMBER})\s*(?:-|to)\s*({_NUMBER})"
+_KG_PER_LB = 0.45359237
+
+
+def _to_float(number):
+    return float(number.replace(",", ""))
+
+
+def _mass_before_unit(s, unit):
+    """Returns the mass (or average of a range) immediately before a unit."""
+    range_match = re.search(rf"{_RANGE}\s*{unit}\b", s, flags=re.IGNORECASE)
+    if range_match:
+        return (_to_float(range_match[1]) + _to_float(range_match[2])) / 2
+    single_match = re.search(rf"({_NUMBER})\s*{unit}\b", s, flags=re.IGNORECASE)
+    if single_match:
+        return _to_float(single_match[1])
+    return None
+
+
 def parse_payload_mass_text(text) -> int:
     """Parses a payload mass cell into an integer mass in kg.
 
     Handles values like:
-    - "5,000 kg"
-    - "5,000–6,000 kg" (returns the average 5,500)
-    - "5000-6000 kg" (same as above)
-    - "~16,000 kg" (returns 16000)
-    - Any footnotes or extra text are ignored
-    Returns 0 if not parseable.
+    - "5,000 kg" and "5 000 kg" (space or non-breaking-space thousands)
+    - "5,000–6,000 kg" or "5000 to 6000 kg" (returns the average 5,500)
+    - "~16,000 kg (35,000 lb)" (returns 16000)
+    - "75,200 lb (34,100 kg)" (the kg figure wins wherever it appears)
+    - "2,500 lb" with no kg figure (converted to kg)
+    Footnote markers like "[12]" are removed first, so "Classified[12]"
+    returns 0 rather than 12. Numbers not attached to a unit (years, counts)
+    are only used when the cell has no unit at all. Returns 0 if not parseable.
     """
     if not text:
         return 0
 
-    s = str(text).strip()
-    s = s.replace("–", "-").replace("—", "-")  # en/em dash -> hyphen
+    s = re.sub(r"\[[^\]]*\]", "", str(text))
+    s = s.replace("\u2013", "-").replace("\u2014", "-")  # en/em dash -> hyphen
+    # Join digit groups separated by a space, nbsp, or narrow nbsp ("16 000")
+    s = re.sub(r"(?<=\d)[ \u00a0\u202f](?=\d{3}(?!\d))", "", s)
 
-    # If there's an explicit numeric range, average the bounds (hyphen or 'to')
-    range_match = re.search(r"(\d[\d,]*)\s*(?:-|to)\s*(\d[\d,]*)", s, flags=re.IGNORECASE)
+    kg = _mass_before_unit(s, "kg")
+    if kg is not None:
+        return int(round(kg))
+
+    lb = _mass_before_unit(s, "lb")
+    if lb is not None:
+        return int(round(lb * _KG_PER_LB))
+
+    range_match = re.search(_RANGE, s)
     if range_match:
-        a, b = (int(part.replace(",", "")) for part in range_match.groups())
-        return int(round((a + b) / 2))
-
-    single_match = re.search(r"(\d[\d,]*)", s)
+        return int(round((_to_float(range_match[1]) + _to_float(range_match[2])) / 2))
+    single_match = re.search(_NUMBER, s)
     if single_match:
-        return int(single_match.group(1).replace(",", ""))
+        return int(round(_to_float(single_match[0])))
 
     return 0
 
