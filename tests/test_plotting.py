@@ -54,6 +54,35 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
             plot_payload_mass_to_orbit_by_year(frame)
         self.assertIn("Lunar", str(ctx.exception))
 
+    def test_bars_stack_each_category_with_its_color_and_label_totals(self):
+        df = build_dataframe(
+            [
+                _record(2024, "LEO", "Starlink A", 1000),
+                _record(2024, "GTO", "SES", 300),
+                _record(2025, "LEO", "Starlink B", 2000),
+            ]
+        )
+        ax = plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit(df)).axes[0]
+        segments = {
+            container.get_label(): [patch.get_height() for patch in container]
+            for container in ax.containers
+        }
+        self.assertEqual(segments["LEO (Starlink)"], [1000, 2000])
+        self.assertEqual(segments["GTO/GEO"], [300, 0])
+
+        # Stacked: each GTO/GEO segment sits on top of the categories before it
+        gto = ax.containers[list(ORBIT_COLORS).index("GTO/GEO")]
+        self.assertEqual(gto[0].get_y(), 1000)
+
+        for container in ax.containers:
+            expected = matplotlib.colors.to_rgba(
+                ORBIT_COLORS[str(container.get_label())]
+            )
+            self.assertEqual(container[0].get_facecolor(), expected)
+
+        totals = [text.get_text() for text in ax.texts]
+        self.assertEqual(totals, ["1,300", "2,000"])
+
 
 if __name__ == "__main__":
     unittest.main()

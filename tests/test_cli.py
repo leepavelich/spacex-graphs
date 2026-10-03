@@ -152,44 +152,49 @@ class TestRun(unittest.TestCase):
         return sorted(os.listdir(self.output_dir))
 
     def test_first_save_writes_all_outputs(self):
-        cli.run(save_output=True)
+        cli.run(save_output=True, today=TODAY)
         self.assertEqual(self._outputs(), OUTPUT_FILES)
-        self.assertFalse(cache.has_data_changed(self.records, self._today()))
+        self.assertFalse(cache.has_data_changed(self.records, TODAY))
         self.show.assert_not_called()
 
     def test_unchanged_rerun_skips_regeneration(self):
-        cli.run(save_output=True)
+        cli.run(save_output=True, today=TODAY)
         svg = os.path.join(self.output_dir, OUTPUT_FILES[0])
         os.utime(svg, (0, 0))
-        cli.run(save_output=True)
+        cli.run(save_output=True, today=TODAY)
         self.assertEqual(os.path.getmtime(svg), 0)
         with open(os.path.join(self.cache_dir, "last_run_date.txt")) as f:
-            self.assertEqual(f.read(), self._today().isoformat())
+            self.assertEqual(f.read(), TODAY.isoformat())
 
     def test_missing_output_regenerates_even_when_unchanged(self):
-        cli.run(save_output=True)
+        cli.run(save_output=True, today=TODAY)
         os.remove(os.path.join(self.output_dir, OUTPUT_FILES[0]))
-        cli.run(save_output=True)
+        cli.run(save_output=True, today=TODAY)
         self.assertEqual(self._outputs(), OUTPUT_FILES)
 
     def test_new_launch_regenerates(self):
-        cli.run(save_output=True)
+        cli.run(save_output=True, today=TODAY)
         svg = os.path.join(self.output_dir, OUTPUT_FILES[0])
         os.utime(svg, (0, 0))
         self.records.append(
             LaunchRecord(2026, "LEO", "New", 1, datetime.datetime(2026, 3, 1), "F9")
         )
-        cli.run(save_output=True)
+        cli.run(save_output=True, today=TODAY)
         self.assertGreater(os.path.getmtime(svg), 0)
 
     def test_display_mode_shows_and_writes_nothing(self):
-        cli.run(save_output=False)
+        cli.run(save_output=False, today=TODAY)
         self.show.assert_called_once()
         self.assertEqual(self._outputs(), [])
 
-    @staticmethod
-    def _today():
-        return datetime.datetime.now(datetime.UTC).date()
+    def test_failed_save_is_retried_rather_than_skipped(self):
+        with (
+            mock.patch.object(output, "save_launches_csv", side_effect=OSError),
+            self.assertRaises(OSError),
+        ):
+            cli.run(save_output=True, today=TODAY)
+        # The hash wasn't recorded, so the next run regenerates
+        self.assertTrue(cache.has_data_changed(self.records, TODAY))
 
 
 if __name__ == "__main__":

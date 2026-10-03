@@ -10,7 +10,7 @@ from unittest import mock
 import requests
 
 from spacex_graphs import cache
-from spacex_graphs.config import STALE_CACHE_LIMIT
+from spacex_graphs.config import HEADERS, REQUEST_TIMEOUT, STALE_CACHE_LIMIT
 
 URL = "https://en.wikipedia.org/wiki/List_of_Starship_launches"
 
@@ -152,6 +152,24 @@ class TestFetchWithCache(unittest.TestCase):
         self.get.side_effect = requests.ConnectionError()
         with self.assertRaises(cache.StaleCacheError):
             cache.fetch_with_cache(URL)
+
+    def test_requests_identify_the_client_and_time_out(self):
+        self.get.return_value = _response(200, b"fresh")
+        cache.fetch_with_cache(URL)
+        kwargs = self.get.call_args.kwargs
+        self.assertEqual(kwargs["timeout"], REQUEST_TIMEOUT)
+        self.assertEqual(kwargs["headers"]["User-Agent"], HEADERS["User-Agent"])
+        self.assertIn("github.com", kwargs["headers"]["User-Agent"])
+
+    def test_last_modified_is_stored_and_sent_back(self):
+        modified = "Wed, 01 Oct 2026 10:00:00 GMT"
+        self.get.return_value = _response(200, b"fresh", {"Last-Modified": modified})
+        cache.fetch_with_cache(URL)
+        self.get.return_value = _response(304)
+        cache.fetch_with_cache(URL)
+        self.assertEqual(
+            self.get.call_args.kwargs["headers"]["If-Modified-Since"], modified
+        )
 
 
 if __name__ == "__main__":

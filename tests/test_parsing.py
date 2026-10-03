@@ -227,6 +227,16 @@ class TestParseFalconPage(unittest.TestCase):
         self.assertEqual(record.vehicle, "Falcon Heavy")
         self.assertIsNone(record.payload_mass)
 
+    def test_falcon_heavy_detected_from_short_fh_label(self):
+        # Two real 2019 launches label the booster only "FH B5 B1055 (core)"
+        for booster in ("FH B5 B1055 (core)", "Falcon Heavy B5 B1084", "F9 B5 B1086"):
+            with self.subTest(booster=booster):
+                (record,) = self._parse(
+                    _falcon_row("11 April 2019", booster, "X", "1 kg", "GTO", "Success")
+                )
+                expected = "Falcon 9" if booster.startswith("F9") else "Falcon Heavy"
+                self.assertEqual(record.vehicle, expected)
+
     def test_failed_launch_keeps_reported_mass_and_outcome(self):
         (record,) = self._parse(
             _falcon_row(

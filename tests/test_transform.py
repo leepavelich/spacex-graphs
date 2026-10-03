@@ -126,6 +126,56 @@ class TestOrbitCategories(unittest.TestCase):
         self.assertEqual(tuple(ORBIT_COLORS), ORBIT_CATEGORIES)
 
 
+EXPECTED_ORBIT_MAPPING = {
+    "Ballistic lunar transfer (BLT)": "BLT",
+    "BLT": "BLT",
+    "GEO": "GTO/GEO",
+    "GTO": "GTO/GEO",
+    "HEO for P/2 orbit": "Other",
+    "Heliocentric": "Heliocentric",
+    "Heliocentric 0.99–1.67 AU (close to Mars transfer orbit)": "Heliocentric",
+    "LEO": "LEO (Other)",
+    "LEO (ISS)": "LEO (Other)",
+    "LEO (Starlink)": "LEO (Starlink)",
+    "LEO / MEO": "Other",
+    "MEO": "MEO",
+    "Polar LEO": "LEO (Other)",
+    "Polar orbit LEO": "LEO (Other)",
+    "Polar (Retrograde)": "LEO (Other)",
+    "Retrograde LEO": "LEO (Other)",
+    "SSO": "SSO (Other)",
+    "SSO (Starlink)": "SSO (Starlink)",
+    "Sub-orbital": "Transatmospheric",
+    "Suborbital": "Transatmospheric",
+    "Sun–Earth L1 insertion": "Other",
+    "Sun–Earth L2 injection": "Other",
+    "Transatmospheric": "Transatmospheric",
+    "—": "Transatmospheric",
+    "Suborbital (Starlink)": "Transatmospheric",
+    "Sub-orbital (Starlink)": "Transatmospheric",
+    "Transatmospheric (Starlink)": "Transatmospheric",
+}
+
+
+class TestOrbitMappingTable(unittest.TestCase):
+    """Pins every mapping entry, so recategorizing an orbit is a visible change."""
+
+    def test_mapping_matches_table(self):
+        from spacex_graphs.config import ORBIT_MAPPING
+
+        self.assertEqual(ORBIT_MAPPING, EXPECTED_ORBIT_MAPPING)
+
+    def test_starlink_payloads_take_the_starlink_category(self):
+        for orbit, expected in [
+            ("LEO", "LEO (Starlink)"),
+            ("SSO", "SSO (Starlink)"),
+            ("Suborbital", "Transatmospheric"),
+        ]:
+            with self.subTest(orbit=orbit):
+                orbit_with_tag = categorize_starlink("Starlink Group 1", orbit)
+                self.assertEqual(clean_orbit_category(orbit_with_tag), expected)
+
+
 class TestOrbitMapping(unittest.TestCase):
     def test_every_mapping_key_is_reachable(self):
         # clean_orbit_category strips "[...]" footnotes before the lookup, so a
@@ -150,18 +200,21 @@ class TestBuildDataFrame(unittest.TestCase):
         self.assertEqual(df.loc[0, "RawOrbit"], "GTO[12]")
         self.assertEqual(df.loc[0, "Orbit"], "GTO/GEO")
 
-    def test_grouping_only_sums_mass(self):
+    def test_grouping_sums_mass_per_year_and_category(self):
         df = build_dataframe(
             [
                 _launch(datetime.datetime(2024, 1, 5), 100, payload="A"),
                 _launch(datetime.datetime(2024, 2, 5), 200, payload="B"),
+                _launch(datetime.datetime(2024, 3, 5), 50, orbit="GTO", payload="C"),
             ]
         )
         grouped = payload_mass_by_year_orbit(df)
         self.assertEqual(list(grouped.columns), ["Year", "Orbit", "PayloadMass"])
+        self.assertEqual(
+            sorted(zip(grouped["Orbit"], grouped["PayloadMass"], strict=True)),
+            [("GTO/GEO", 50), ("LEO (Other)", 300)],
+        )
 
-
-class TestCountedMass(unittest.TestCase):
     def test_only_successful_launches_with_known_mass_count(self):
         when = datetime.datetime(2024, 1, 5)
         df = build_dataframe(

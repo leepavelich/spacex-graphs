@@ -92,14 +92,18 @@ def load_launch_records(today: datetime.date) -> list[LaunchRecord]:
     return records
 
 
-def run(save_output: bool) -> None:
-    """Generates the graphs, saving them as SVGs or displaying them on screen."""
+def run(save_output: bool, today: datetime.date | None = None) -> None:
+    """Generates the graphs, saving them as SVGs or displaying them on screen.
+
+    today defaults to the current UTC date; tests pass a fixed one.
+    """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(CACHE_DIR, exist_ok=True)
 
     # Launch times are UTC, so "today" (where the current year's line ends)
     # is the UTC date too; computed once here so the transforms stay pure
-    today = datetime.datetime.now(datetime.UTC).date()
+    if today is None:
+        today = datetime.datetime.now(datetime.UTC).date()
     records = load_launch_records(today)
 
     # When saving, skip regeneration if neither the data nor the date changed
