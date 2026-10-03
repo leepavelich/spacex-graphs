@@ -109,6 +109,22 @@ def parse_payload_mass_text(text: str | None) -> int:
     return 0
 
 
+def _cell_text(cell: Tag, line_separator: str = " ") -> str:
+    """Returns a table cell's visible text as one clean line.
+
+    Footnote superscripts and hidden sort keys are removed, line breaks become
+    line_separator (so "SPHEREx<br>PUNCH" doesn't read as "SPHERExPUNCH"), and
+    runs of whitespace, including non-breaking spaces, collapse to one space.
+    """
+    for hidden in cell.select('sup.reference, [style*="display:none"]'):
+        hidden.decompose()
+    for line_break in cell.find_all("br"):
+        line_break.replace_with("\n")
+    text = re.sub(r"\[[^\]]*\]", "", cell.get_text())
+    lines = (" ".join(line.split()) for line in text.splitlines())
+    return line_separator.join(line for line in lines if line)
+
+
 def _parse_falcon_row(cols: Sequence[Tag]) -> LaunchRecord | None:
     """Parses a Falcon 9/Heavy table row.
 
@@ -121,11 +137,12 @@ def _parse_falcon_row(cols: Sequence[Tag]) -> LaunchRecord | None:
     if launch_datetime is None:
         return None
 
-    booster = cols[1].text.strip()
-    payload = cols[3].text.strip()
-    payload_mass = parse_payload_mass_text(cols[4].text.strip())
-    orbit = cols[5].text.strip()
-    launch_outcome = cols[7].text.strip().lower()
+    booster = _cell_text(cols[1])
+    payload = _cell_text(cols[3])
+    # "; " keeps separate lines from being read as one space-grouped number
+    payload_mass = parse_payload_mass_text(_cell_text(cols[4], "; "))
+    orbit = _cell_text(cols[5])
+    launch_outcome = _cell_text(cols[7]).lower()
 
     if "success" not in launch_outcome:
         payload_mass = 0
@@ -149,11 +166,11 @@ def _parse_starship_row(cols: Sequence[Tag]) -> LaunchRecord | None:
     if launch_datetime is None:
         return None
 
-    ship_version = cols[2].text.strip()
-    payload = cols[4].text.strip()
-    payload_mass_text = cols[5].text.strip()
-    orbit = cols[6].text.strip()
-    launch_outcome = cols[8].text.strip().lower()
+    ship_version = _cell_text(cols[2])
+    payload = _cell_text(cols[4])
+    payload_mass_text = _cell_text(cols[5], "; ")
+    orbit = _cell_text(cols[6])
+    launch_outcome = _cell_text(cols[8]).lower()
 
     # Extract block version from ship (e.g., "Block 1S24" -> "Block 1 Starship")
     block_match = re.search(r"Block\s+(\d+)", ship_version)
@@ -165,7 +182,7 @@ def _parse_starship_row(cols: Sequence[Tag]) -> LaunchRecord | None:
     else:
         payload_mass = 0
 
-    # An empty payload cell renders as "—" followed by a hidden "N/a" sort key
+    # An empty payload cell shows just "—" (its "N/a" sort key is hidden)
     if payload.startswith("—") or not payload:
         payload = "Starship Test"
 

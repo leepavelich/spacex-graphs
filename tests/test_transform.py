@@ -51,7 +51,7 @@ class TestCleanOrbitCategory(unittest.TestCase):
         self.assertEqual(clean_orbit_category("Sun–Earth L1 insertion"), "Other")
         self.assertEqual(
             clean_orbit_category(
-                "Heliocentric0.99–1.67 AU[248](close to Mars transfer orbit)"
+                "Heliocentric 0.99–1.67 AU[248] (close to Mars transfer orbit)"
             ),
             "Heliocentric",
         )

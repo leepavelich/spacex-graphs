@@ -152,7 +152,7 @@ class TestParseStarshipRow(unittest.TestCase):
         (record,) = parse_launch_page(STARSHIP_URL, html)
         self.assertEqual(record.launch_datetime, datetime.datetime(2026, 9, 20, 23, 0))
         self.assertEqual(record.vehicle, "Block 3 Starship")
-        self.assertEqual(record.payload, "20 Starlink V3[81]")
+        self.assertEqual(record.payload, "20 Starlink V3")
         self.assertEqual(record.payload_mass, 34100)
         self.assertEqual(record.orbit, "LEO")
 
@@ -254,6 +254,37 @@ class TestParseFalconPage(unittest.TestCase):
             _falcon_row("1 March 2026", "F9", "Good", "2 kg", "LEO", "Success"),
         )
         self.assertEqual([r.payload for r in records], ["Good"])
+
+
+class TestCellText(unittest.TestCase):
+    """Cell text reaches records cleaned, through the Falcon row parser."""
+
+    def _record(self, payload="Sat", mass="1 kg", orbit="LEO"):
+        html = _starship_table(
+            _falcon_row("3 January 2025", "F9", payload, mass, orbit, "Success")
+        )
+        (record,) = parse_launch_page(FALCON_URL, html)
+        return record
+
+    def test_line_breaks_separate_words(self):
+        self.assertEqual(
+            self._record(payload="SPHEREx<br>PUNCH").payload, "SPHEREx PUNCH"
+        )
+
+    def test_footnotes_and_hidden_sort_keys_are_removed(self):
+        payload = '<span style="display:none">0042</span>SES-8<sup class="reference">[18]</sup>[31]'
+        self.assertEqual(self._record(payload=payload).payload, "SES-8")
+        self.assertEqual(self._record(orbit="GTO<sup>[324]</sup>").orbit, "GTO")
+
+    def test_whitespace_collapses_to_single_spaces(self):
+        payload = "Starlink:\u00a0Group  12-4\n(21\u00a0satellites)"
+        self.assertEqual(
+            self._record(payload=payload).payload,
+            "Starlink: Group 12-4 (21 satellites)",
+        )
+
+    def test_mass_on_separate_lines_is_not_merged(self):
+        self.assertEqual(self._record(mass="4,700<br/>172 kg").payload_mass, 172)
 
 
 class TestDropDuplicateLaunches(unittest.TestCase):

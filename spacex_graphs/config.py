@@ -49,7 +49,7 @@ ORBIT_MAPPING = {
     "GTO": "GTO/GEO",
     "HEO for P/2 orbit": "Other",
     "Heliocentric": "Heliocentric",
-    "Heliocentric0.99–1.67 AU(close to Mars transfer orbit)": "Heliocentric",
+    "Heliocentric 0.99–1.67 AU (close to Mars transfer orbit)": "Heliocentric",
     "LEO": "LEO (Other)",
     "LEO (ISS)": "LEO (Other)",
     "LEO (Starlink)": "LEO (Starlink)",
