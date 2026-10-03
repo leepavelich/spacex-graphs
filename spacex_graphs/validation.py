@@ -8,21 +8,36 @@ are pure functions; the CLI fetches the inputs and decides what to log.
 import datetime
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
+from typing import NamedTuple
 
-from spacex_graphs.config import FIRST_CONTINUOUS_YEAR, MAX_LAUNCH_COUNT_DROP
+from spacex_graphs.config import FIRST_CONTINUOUS_YEAR, MAX_DAYS_SINCE_LAUNCH
+from spacex_graphs.errors import DataError
 from spacex_graphs.parsing import LaunchRecord
 
 
-class EmptyPageError(RuntimeError):
+class EmptyPageError(DataError):
     """Raised when a Wikipedia page yields no launch records."""
 
 
-class MissingYearsError(RuntimeError):
+class MissingYearsError(DataError):
     """Raised when past years that should have launches have none."""
 
 
-class LaunchCountDropError(RuntimeError):
-    """Raised when a year has far fewer launches than were last published."""
+class PublishedLaunchesLostError(DataError):
+    """Raised when launches or masses that were published have gone missing."""
+
+
+class NoRecentLaunchesError(DataError):
+    """Raised when the newest parsed launch is too old to be the latest."""
+
+
+class PublishedLaunch(NamedTuple):
+    """A launch as it appears in the published CSV."""
+
+    date: datetime.date
+    vehicle: str
+    payload: str
+    mass: int | None
 
 
 def check_pages_not_empty(page_records: Mapping[str, Sequence[LaunchRecord]]) -> None:
@@ -84,34 +99,73 @@ def check_year_coverage(records: Iterable[LaunchRecord], today: datetime.date) -
         )
 
 
-def launch_counts_by_year(records: Iterable[LaunchRecord]) -> dict[int, int]:
-    """Counts launches per year."""
-    return dict(Counter(record.year for record in records))
+def check_recent_launch(records: Iterable[LaunchRecord], today: datetime.date) -> None:
+    """Fails when the newest launch is more than MAX_DAYS_SINCE_LAUNCH old.
 
-
-def check_launch_counts(
-    records: Iterable[LaunchRecord], published: Mapping[int, int]
-) -> None:
-    """Fails when a year has lost launches since they were last published.
-
-    Wikipedia only adds launches, apart from the odd correction, so a year
-    with more than MAX_LAUNCH_COUNT_DROP fewer launches than the published
-    CSV means part of a page stopped parsing, such as one year's table after
-    a layout change. published maps years to their published launch counts
-    and is empty on a first run.
+    If new launches stop parsing (say, the current table's layout changes),
+    nothing is lost from the published data, so only this check notices.
     """
-    counts = launch_counts_by_year(records)
-    drops = {
-        year: (before, counts.get(year, 0))
-        for year, before in published.items()
-        if before - counts.get(year, 0) > MAX_LAUNCH_COUNT_DROP
+    latest = max(record.launch_datetime.date() for record in records)
+    if (today - latest).days > MAX_DAYS_SINCE_LAUNCH:
+        raise NoRecentLaunchesError(
+            f"the newest launch found is from {latest.isoformat()}, more than "
+            f"{MAX_DAYS_SINCE_LAUNCH} days ago (have new launches stopped parsing?)"
+        )
+
+
+def _describe(launch: PublishedLaunch) -> str:
+    return f"{launch.date.isoformat()} {launch.vehicle} ({launch.payload})"
+
+
+def check_published_launches(
+    records: Iterable[LaunchRecord], published: Sequence[PublishedLaunch]
+) -> None:
+    """Fails when anything published has gone missing from the new data.
+
+    Every published launch must still be found, matched on its date and
+    vehicle (times are ignored, since Wikipedia refines them after launch).
+    Dates aren't matched loosely: SpaceX launches nearly daily, so a launch
+    "moved by a day" is indistinguishable from a lost launch next to a new
+    one. A published launch with a known mass must not have lost it. Wikipedia only adds
+    launches and masses, so any loss means part of a page stopped parsing,
+    however small: two heavy Starship flights are a few percent of a year's
+    mass. published is empty on a first run.
+    """
+    records = list(records)
+    unmatched = Counter(
+        (record.launch_datetime.date(), record.vehicle) for record in records
+    )
+    mass_known = {
+        (record.launch_datetime.date(), record.vehicle)
+        for record in records
+        if record.payload_mass is not None
     }
-    if drops:
-        raise LaunchCountDropError(
-            "fewer launches than last published: "
-            + ", ".join(
-                f"{year} has {now} (was {before})"
-                for year, (before, now) in sorted(drops.items())
-            )
-            + " (has part of a Wikipedia table stopped parsing?)"
+
+    missing = []
+    lost_mass = []
+    for launch in published:
+        key = (launch.date, launch.vehicle)
+        if unmatched[key] == 0:
+            missing.append(launch)
+            continue
+        unmatched[key] -= 1
+        if launch.mass is not None and key not in mass_known:
+            lost_mass.append(launch)
+
+    problems = []
+    if missing:
+        problems.append(
+            f"{len(missing)} published launches are missing: "
+            + "; ".join(map(_describe, missing[:5]))
+            + ("; ..." if len(missing) > 5 else "")
+        )
+    if lost_mass:
+        problems.append(
+            f"{len(lost_mass)} published launches lost their mass: "
+            + "; ".join(map(_describe, lost_mass[:5]))
+            + ("; ..." if len(lost_mass) > 5 else "")
+        )
+    if problems:
+        raise PublishedLaunchesLostError(
+            ". ".join(problems) + " (has part of a Wikipedia table stopped parsing?)"
         )

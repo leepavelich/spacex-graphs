@@ -3,6 +3,7 @@
 import datetime
 import re
 from collections.abc import Sequence
+from typing import Final
 
 import pandas as pd
 
@@ -13,7 +14,27 @@ from spacex_graphs.config import (
     ORBIT_MAPPING,
     OTHER_ORBIT,
 )
-from spacex_graphs.parsing import LaunchRecord
+from spacex_graphs.parsing import FOOTNOTE, LaunchRecord
+
+
+class Col:
+    """Column names of the frames built here.
+
+    Plotting and output import these instead of repeating the strings, so the
+    frames' shape is one visible contract rather than an implicit one.
+    """
+
+    YEAR: Final = "Year"
+    RAW_ORBIT: Final = "RawOrbit"
+    ORBIT: Final = "Orbit"
+    PAYLOAD: Final = "Payload"
+    REPORTED_MASS: Final = "ReportedMass"
+    MASS: Final = "PayloadMass"
+    DATETIME: Final = "DateTime"
+    VEHICLE: Final = "Vehicle"
+    OUTCOME: Final = "Outcome"
+    DAY_OF_YEAR: Final = "DayOfYear"
+    CUMULATIVE_MASS: Final = "CumulativePayloadMass"
 
 
 def clean_orbit_category(orbit: str) -> str:
@@ -23,7 +44,7 @@ def clean_orbit_category(orbit: str) -> str:
     a LEO category when they are clearly a low Earth orbit variant (e.g.
     "Elliptical LEO"), and to "Other" otherwise.
     """
-    orbit_cleaned = re.sub(r"\[.*?\]", "", orbit).strip()
+    orbit_cleaned = FOOTNOTE.sub("", orbit).strip()
     if orbit_cleaned in ORBIT_MAPPING:
         return ORBIT_MAPPING[orbit_cleaned]
     if re.search(r"\bLEO\b|low earth orbit", orbit_cleaned, flags=re.IGNORECASE):
@@ -62,20 +83,22 @@ def build_dataframe(records: Sequence[LaunchRecord]) -> pd.DataFrame:
     """
     df = pd.DataFrame(
         {
-            "Year": [r.year for r in records],
-            "RawOrbit": [r.orbit for r in records],
-            "Payload": [r.payload for r in records],
-            "ReportedMass": pd.array([r.payload_mass for r in records], dtype="Int64"),
-            "PayloadMass": [
+            Col.YEAR: [r.year for r in records],
+            Col.RAW_ORBIT: [r.orbit for r in records],
+            Col.PAYLOAD: [r.payload for r in records],
+            Col.REPORTED_MASS: pd.array(
+                [r.payload_mass for r in records], dtype="Int64"
+            ),
+            Col.MASS: [
                 (r.payload_mass or 0) if launch_succeeded(r.outcome) else 0
                 for r in records
             ],
-            "DateTime": pd.to_datetime([r.launch_datetime for r in records]),
-            "Vehicle": [r.vehicle for r in records],
-            "Outcome": [r.outcome for r in records],
+            Col.DATETIME: pd.to_datetime([r.launch_datetime for r in records]),
+            Col.VEHICLE: [r.vehicle for r in records],
+            Col.OUTCOME: [r.outcome for r in records],
         }
     )
-    df["Orbit"] = [
+    df[Col.ORBIT] = [
         clean_orbit_category(categorize_starlink(r.payload, r.orbit)) for r in records
     ]
     return df
@@ -88,21 +111,21 @@ def chart_caption(df: pd.DataFrame) -> str:
     Built only from the data (not the clock), so the charts change only when
     the launches do.
     """
-    latest = df["DateTime"].max()
+    latest = df[Col.DATETIME].max()
     unknown = int(
-        (df["ReportedMass"].isna() & df["Outcome"].map(launch_succeeded)).sum()
+        (df[Col.REPORTED_MASS].isna() & df[Col.OUTCOME].map(launch_succeeded)).sum()
     )
     launches = "launch" if unknown == 1 else "launches"
     return (
-        f"Source: Wikipedia launch lists (CC BY-SA 4.0), launches through "
-        f"{latest:%-d %B %Y}. {unknown} successful {launches} with unknown or "
+        f"Data: Wikipedia contributors, CC BY-SA 4.0, launches through "
+        f"{latest.day} {latest:%B %Y}. {unknown} successful {launches} with unknown or "
         "classified payload mass count as 0 kg."
     )
 
 
 def payload_mass_by_year_orbit(df: pd.DataFrame) -> pd.DataFrame:
     """Sums payload mass grouped by year and orbit category."""
-    return df.groupby(["Year", "Orbit"])["PayloadMass"].sum().reset_index()
+    return df.groupby([Col.YEAR, Col.ORBIT])[Col.MASS].sum().reset_index()
 
 
 def _period_end(year: int, today: datetime.date) -> datetime.datetime:
@@ -121,20 +144,20 @@ def build_cumulative_frame(df: pd.DataFrame, today: datetime.date) -> pd.DataFra
     extends to there. Returns one row per point, with "DayOfYear" and
     "CumulativePayloadMass" ready to plot.
     """
-    df = df[df["Year"] >= MIN_CUMULATIVE_YEAR]
+    df = df[df[Col.YEAR] >= MIN_CUMULATIVE_YEAR]
     boundaries: list[dict[str, object]] = []
-    for year in df["Year"].unique():
+    for year in df[Col.YEAR].unique():
         for when in (datetime.datetime(year, 1, 1), _period_end(year, today)):
-            boundaries.append({"Year": year, "PayloadMass": 0, "DateTime": when})
+            boundaries.append({Col.YEAR: year, Col.MASS: 0, Col.DATETIME: when})
 
     points = pd.concat(
-        [pd.DataFrame(boundaries), df[["Year", "PayloadMass", "DateTime"]]],
+        [pd.DataFrame(boundaries), df[[Col.YEAR, Col.MASS, Col.DATETIME]]],
         ignore_index=True,
     )
-    points["DateTime"] = pd.to_datetime(points["DateTime"])
+    points[Col.DATETIME] = pd.to_datetime(points[Col.DATETIME])
     # Stable sort keeps the zero-mass January 1st point ahead of any launch
     # at exactly midnight, so cumulative sums never step backwards
-    points = points.sort_values(["Year", "DateTime"], kind="stable")
-    points["CumulativePayloadMass"] = points.groupby("Year")["PayloadMass"].cumsum()
-    points["DayOfYear"] = points["DateTime"].dt.dayofyear
+    points = points.sort_values([Col.YEAR, Col.DATETIME], kind="stable")
+    points[Col.CUMULATIVE_MASS] = points.groupby(Col.YEAR)[Col.MASS].cumsum()
+    points[Col.DAY_OF_YEAR] = points[Col.DATETIME].dt.dayofyear
     return points.reset_index(drop=True)

@@ -125,6 +125,11 @@ class TestParsePayloadMassText(unittest.TestCase):
         self.assertEqual(parse_payload_mass_text("2,500 lbs"), 1134)
         self.assertEqual(parse_payload_mass_text("16 t (35,000 lb)"), 16000)
 
+    def test_units_must_be_whole_words(self):
+        for text in ("12 transponders", "3 tugs", "4 lbsx", "7 kgs"):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_payload_mass_text(text))
+
     def test_numbers_without_a_unit_are_not_masses(self):
         for text in ("Unknown (22 satellites)", "Group 6-12", "2025", "~16,000"):
             with self.subTest(text=text):
@@ -305,7 +310,32 @@ class TestCellText(unittest.TestCase):
         self.assertEqual(self._record(mass="4,700<br/>172 kg").payload_mass, 172)
 
 
+_FALCON_LIST = (
+    "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches"
+)
+
+# Pins the page list, so a page dropped, retargeted, or given the wrong table
+# layout shows up as a deliberate change in review
+EXPECTED_PAGES = [
+    ("Falcon 2010-2019", f"{_FALCON_LIST}_(2010%E2%80%932019)", "falcon"),
+    ("Falcon 2020-2022", f"{_FALCON_LIST}_(2020%E2%80%932022)", "falcon"),
+    ("Falcon 2023", f"{_FALCON_LIST}_(2023)", "falcon"),
+    ("Falcon 2024", f"{_FALCON_LIST}_(2024)", "falcon"),
+    ("Falcon current", _FALCON_LIST, "falcon"),
+    (
+        "Starship launches",
+        "https://en.wikipedia.org/wiki/List_of_Starship_launches",
+        "starship",
+    ),
+]
+
+
 class TestPageLayouts(unittest.TestCase):
+    def test_pages_match_the_pinned_list(self):
+        from spacex_graphs.config import WIKIPEDIA_PAGES
+
+        self.assertEqual([tuple(page) for page in WIKIPEDIA_PAGES], EXPECTED_PAGES)
+
     def test_every_page_has_a_parser_and_a_unique_name_and_url(self):
         from spacex_graphs.config import WIKIPEDIA_PAGES
         from spacex_graphs.parsing import _ROW_PARSERS
@@ -326,6 +356,20 @@ class TestPageLayouts(unittest.TestCase):
         # The 11-cell Starship row read as a Falcon row lands in the wrong columns
         (falcon_reading,) = parse_launch_page("falcon", html)
         self.assertEqual(falcon_reading.vehicle, "Falcon 9")
+
+
+class TestPageStructure(unittest.TestCase):
+    def test_only_wikitable_tables_are_parsed(self):
+        row = _falcon_row("3 January 2025", "F9", "Sat", "1 kg", "LEO", "Success")
+        html = f"<table>{row}</table>" + _starship_table(row)
+        self.assertEqual(len(parse_launch_page("falcon", html)), 1)
+
+    def test_starship_without_a_block_number_is_plain_starship(self):
+        html = _starship_table(
+            _starship_row("May 27, 2025 23:36", "S35", "X", "1 kg", "LEO", "Success")
+        )
+        (record,) = parse_launch_page("starship", html)
+        self.assertEqual(record.vehicle, "Starship")
 
 
 if __name__ == "__main__":

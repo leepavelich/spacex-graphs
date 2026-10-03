@@ -9,6 +9,9 @@ from bs4 import BeautifulSoup, Tag
 
 from spacex_graphs.config import TableLayout
 
+# A footnote marker such as "[12]" or "[a]"
+FOOTNOTE = re.compile(r"\[[^\]]*\]")
+
 
 class LaunchRecord(NamedTuple):
     """A single launch parsed from Wikipedia, as Wikipedia reports it.
@@ -100,7 +103,7 @@ def parse_payload_mass_text(text: str | None) -> int | None:
     if not text:
         return None
 
-    s = re.sub(r"\[[^\]]*\]", "", str(text))
+    s = FOOTNOTE.sub("", str(text))
     s = s.replace("\u2013", "-").replace("\u2014", "-")  # en/em dash -> hyphen
     # Join digit groups separated by a space, nbsp, or narrow nbsp ("16 000")
     s = re.sub(r"(?<=\d)[ \u00a0\u202f](?=\d{3}(?!\d))", "", s)
@@ -123,7 +126,7 @@ def _cell_text(cell: Tag, line_separator: str = " ") -> str:
         hidden.decompose()
     for line_break in cell.find_all("br"):
         line_break.replace_with("\n")
-    text = re.sub(r"\[[^\]]*\]", "", cell.get_text())
+    text = FOOTNOTE.sub("", cell.get_text())
     lines = (" ".join(line.split()) for line in text.splitlines())
     return line_separator.join(line for line in lines if line)
 

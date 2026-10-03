@@ -14,20 +14,11 @@ import matplotlib.pyplot as plt
 
 from spacex_graphs import cache, output, plotting, transform, validation
 from spacex_graphs.config import CACHE_DIR, OUTPUT_DIR, WIKIPEDIA_PAGES, Page
+from spacex_graphs.errors import DataError
 from spacex_graphs.parsing import LaunchRecord, parse_launch_page
 
 logger = logging.getLogger(__name__)
 
-
-# Errors that mean the data can't be trusted: the run fails rather than
-# publishing graphs built from it
-DATA_ERRORS = (
-    validation.EmptyPageError,
-    validation.MissingYearsError,
-    validation.LaunchCountDropError,
-    cache.FetchError,
-    cache.StaleCacheError,
-)
 
 # matplotlib backends that render to files only; with one of these, showing
 # the graphs on screen would silently do nothing
@@ -104,7 +95,8 @@ def load_launch_records(
         logger.warning("Dropped %d launches dated after today", future)
 
     validation.check_year_coverage(records, today)
-    validation.check_launch_counts(records, output.published_launch_counts(output_dir))
+    validation.check_recent_launch(records, today)
+    validation.check_published_launches(records, output.published_launches(output_dir))
     return records
 
 
@@ -128,6 +120,9 @@ def run(
     if today is None:
         today = datetime.datetime.now(datetime.UTC).date()
     records = load_launch_records(today, cache_dir=cache_dir, output_dir=output_dir)
+    version = code_version()
+    latest = max(record.launch_datetime for record in records)
+    _summarize(f"Parsed {len(records)} launches; the latest is from {latest:%Y-%m-%d}.")
 
     # When saving, skip regeneration if neither the data nor the date changed
     # since the last successful run and every output still exists. Parsing is
@@ -137,40 +132,70 @@ def run(
         save_output
         and not output.missing_outputs(output_dir)
         and not cache.has_data_changed(
-            records, today, cache_dir=cache_dir, code_version=code_version()
+            records, today, cache_dir=cache_dir, code_version=version
         )
     ):
         logger.info("No changes detected in launch data - skipping graph regeneration")
+        _summarize("Nothing changed since the last run, so the outputs were kept.")
         return
 
     df = transform.build_dataframe(records)
     caption = transform.chart_caption(df)
-    fig_by_year = plotting.plot_payload_mass_to_orbit_by_year(
-        transform.payload_mass_by_year_orbit(df),
-        current_year=today.year,
-        caption=caption,
-    )
-    fig_cumulative = plotting.plot_cumulative_payload_mass_to_orbit(
-        transform.build_cumulative_frame(df, today), today, caption=caption
-    )
+    # Each graph, keyed by the SVG file it is saved to
+    figures = {
+        output.BY_YEAR_SVG: plotting.plot_payload_mass_to_orbit_by_year(
+            transform.payload_mass_by_year_orbit(df),
+            current_year=today.year,
+            caption=caption,
+        ),
+        output.CUMULATIVE_SVG: plotting.plot_cumulative_payload_mass_to_orbit(
+            transform.build_cumulative_frame(df, today), today, caption=caption
+        ),
+    }
 
     if save_output:
-        output.save_plots(fig_by_year, fig_cumulative, output_dir=output_dir)
+        output.save_plots(figures, output_dir=output_dir)
         output.save_launches_csv(df, output_dir=output_dir)
-        cache.save_data_hash(
-            records, today, cache_dir=cache_dir, code_version=code_version()
-        )
+        cache.save_data_hash(records, today, cache_dir=cache_dir, code_version=version)
         logger.info("Graphs updated successfully")
+        _summarize("Regenerated the graphs and CSV.")
     else:
         plt.show()
 
 
+def _in_github_actions() -> bool:
+    return os.environ.get("GITHUB_ACTIONS") == "true"
+
+
+def _summarize(line: str) -> None:
+    """Adds a line to the GitHub Actions job summary, when running there."""
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with open(summary_path, "a", encoding="utf-8") as f:
+            f.write(f"{line}\n\n")
+
+
+class _AnnotationFormatter(logging.Formatter):
+    """Formats warnings and errors as GitHub Actions annotations, which show on
+    the run's page instead of only in the log (so a run that falls back to
+    cached pages is visibly yellow, not silently green)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        level = "error" if record.levelno >= logging.ERROR else "warning"
+        return f"::{level}::{record.getMessage().strip()}"
+
+
 def _configure_logging(quiet: bool) -> None:
-    """Sends progress to stdout and warnings and errors to stderr."""
+    """Sends progress to stdout and warnings and errors to stderr.
+
+    In GitHub Actions, warnings and errors are written as annotations.
+    """
     progress = logging.StreamHandler(sys.stdout)
     progress.addFilter(lambda record: record.levelno < logging.WARNING)
     problems = logging.StreamHandler(sys.stderr)
     problems.setLevel(logging.WARNING)
+    if _in_github_actions():
+        problems.setFormatter(_AnnotationFormatter())
     logging.basicConfig(
         level=logging.WARNING if quiet else logging.INFO,
         format="%(message)s",
@@ -209,6 +234,11 @@ def main() -> None:
     _configure_logging(args.quiet)
     try:
         run(args.output)
-    except DATA_ERRORS as error:
+    except DataError as error:
         logger.error("ERROR: %s", error)
+        _summarize(f"**Failed:** {error}")
+        sys.exit(1)
+    except OSError as error:
+        # Usually a permissions problem with the output or cache directory
+        logger.error("ERROR: could not write the outputs or cache: %s", error)
         sys.exit(1)

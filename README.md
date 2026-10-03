@@ -28,6 +28,8 @@ The container runs as a user with ID 1000. On a Linux host where your user ID di
 docker compose run --rm --user "$(id -u):$(id -g)" graphs
 ```
 
+If a cache volume from before this option worked fails with a permission error, remove it once with `docker compose down -v`.
+
 ## Running locally
 
 You need Python 3.11 or newer.
@@ -52,14 +54,15 @@ With `--output`, the script writes three files to `outputs/`:
 
 - `payload_mass_to_orbit_by_year.svg`: a stacked bar chart of payload mass launched to each destination by year
 - `cumulative_payload_mass_to_orbit.svg`: a line chart of cumulative payload mass launched, from 2017 onwards
-- `spacex_launches.csv`: every parsed launch, with its raw and categorized orbit and its outcome. `Payload Mass (kg)` is the mass Wikipedia reports, blank when unknown or classified. `Counted Mass (kg)` is what the graphs sum, which is 0 for failed launches.
+- `spacex_launches.csv`: every parsed launch, with its raw and categorized orbit and its outcome. `Payload Mass (kg)` is the mass Wikipedia reports, blank when unknown or classified. `Counted Mass (kg)` is what the graphs sum, which is 0 for failed launches and for launches whose mass is unknown.
 
 Downloaded pages are cached in `.cache/`, and Wikipedia is asked only for pages that changed. If neither the launch data nor the date has changed since the last successful run, the script skips regenerating the outputs.
 
 The run fails with exit code 1, rather than publishing questionable graphs, when:
 
 - a page parses to no launches, or a past year has none;
-- a year has more than two fewer launches than the published CSV, which usually means part of a table stopped parsing;
+- a launch in the published CSV is missing, or its known mass has become unknown, which usually means part of a table stopped parsing;
+- the newest launch found is more than 30 days old, which usually means new launches have stopped parsing;
 - Wikipedia can't be reached and the cached pages are more than three days old, or there are no cached pages.
 
 A GitHub Actions workflow runs the script daily and commits any changed outputs, which keeps the graphs above current.
@@ -71,6 +74,7 @@ A GitHub Actions workflow runs the script daily and commits any changed outputs,
 - `config.py` — Wikipedia URLs, HTTP settings, orbit-category mapping
 - `cache.py` — HTTP caching (ETag/Last-Modified) and change detection
 - `parsing.py` — parses launch records from Wikipedia's HTML tables
+- `validation.py` — checks the parsed launches are complete enough to publish
 - `transform.py` — orbit categorization and DataFrame preparation
 - `plotting.py` — builds the matplotlib figures
 - `output.py` — writes the SVG and CSV files
@@ -96,6 +100,10 @@ python3 -m unittest discover -s tests
 Dependencies are declared in `requirements.in` and `requirements-dev.in` and locked, with hashes, in the matching `.txt` files. To change a dependency, edit the `.in` file and run `scripts/update-locks.sh`; pass `--upgrade` to move everything to the latest releases. CI fails if a lock doesn't match its `.in` file.
 
 Leave regenerating `outputs/` to the scheduled workflow: SVGs rendered on other platforms differ slightly from CI's even for the same data.
+
+## License
+
+The code is released under the [MIT License](LICENSE). The graphs and CSV in `outputs/` are adapted from Wikipedia content by Wikipedia contributors, so they are licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) instead; [outputs/README.md](outputs/README.md) has the attribution. The test fixtures are Wikipedia excerpts under the same license, as [tests/fixtures/README.md](tests/fixtures/README.md) notes.
 
 ## Contributing
 

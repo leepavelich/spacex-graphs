@@ -237,6 +237,7 @@ class TestBuildDataFrame(unittest.TestCase):
             ("Precluded (pre-flight failure)", False),
             ("Unsuccessful", False),
             ("Partial success", False),
+            ("success", True),
         ]:
             with self.subTest(outcome=outcome):
                 self.assertEqual(launch_succeeded(outcome), counts)
@@ -265,7 +266,7 @@ class TestChartCaption(unittest.TestCase):
             ]
         )
         caption = chart_caption(df)
-        self.assertIn("Wikipedia", caption)
+        self.assertIn("Wikipedia contributors", caption)
         self.assertIn("CC BY-SA 4.0", caption)
         self.assertIn("through 2 September 2026", caption)
         self.assertIn("1 successful launch with unknown", caption)
@@ -296,7 +297,9 @@ class TestBuildCumulativeFrame(unittest.TestCase):
 
     def test_midnight_launch_on_jan_1_never_steps_backwards(self):
         records = [_launch(datetime.datetime(2025, 1, 1), 70)]
-        masses = [mass for _, mass in self._series(records, 2025)]
+        series = self._series(records, 2025)
+        self.assertEqual(series[0], (1, 0))  # the line starts at the origin
+        masses = [mass for _, mass in series]
         self.assertEqual(masses, sorted(masses))
         self.assertEqual(masses[-1], 70)
 

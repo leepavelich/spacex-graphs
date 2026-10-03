@@ -13,9 +13,12 @@ concurrency:
 jobs:
   update-graphs:
     runs-on: ubuntu-latest
-    # The job's GITHUB_TOKEN only needs to push the regenerated outputs
+    timeout-minutes: 15
+    # The job's GITHUB_TOKEN pushes the regenerated outputs and opens an issue
+    # when the run fails
     permissions:
       contents: write
+      issues: write
 
     steps:
       - name: Checkout Repository
@@ -54,3 +57,20 @@ jobs:
           commit_user_name: GitHub Actions
           commit_user_email: actions@github.com
           commit_author: GitHub Actions <actions@github.com>
+
+      - name: Report Failure
+        # A failing scheduled job otherwise only sends GitHub's default email;
+        # one open issue collects every failure until someone closes it
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Scheduled graph update is failing"
+          number=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "Failed again: $RUN_URL"
+          else
+            gh issue create --title "$title" --body "The scheduled update failed, so the published graphs weren't updated. Run: $RUN_URL. Its annotations and job summary say why; close this issue once it's fixed."
+          fi

@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from spacex_graphs import output
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.transform import build_dataframe
+from spacex_graphs.validation import PublishedLaunch
 
 
 def _figure():
@@ -29,7 +30,10 @@ def _figure():
 
 def _render_svgs(directory):
     figs = (_figure(), _figure())
-    output.save_plots(*figs, output_dir=directory)
+    output.save_plots(
+        {output.BY_YEAR_SVG: figs[0], output.CUMULATIVE_SVG: figs[1]},
+        output_dir=directory,
+    )
     plt.close("all")
     contents = {}
     for name in sorted(os.listdir(directory)):
@@ -145,21 +149,48 @@ class TestFormulaEscaping(unittest.TestCase):
         self.assertEqual(rows[1]["Payload"], "Starlink")
 
 
-class TestPublishedLaunchCounts(unittest.TestCase):
-    def test_counts_rows_per_year_in_the_published_csv(self):
+class TestPublishedLaunches(unittest.TestCase):
+    def test_reads_back_what_was_published(self):
         df = build_dataframe(
             [
-                LaunchRecord(2025, "LEO", "A", 1, datetime.datetime(2025, 1, 1), "F9"),
-                LaunchRecord(2025, "LEO", "B", 1, datetime.datetime(2025, 2, 1), "F9"),
-                LaunchRecord(2026, "LEO", "C", 1, datetime.datetime(2026, 1, 1), "F9"),
+                LaunchRecord(
+                    2025, "LEO", "A", 900, datetime.datetime(2025, 1, 1), "F9"
+                ),
+                LaunchRecord(
+                    2026, "LEO", "B", None, datetime.datetime(2026, 1, 1), "FH"
+                ),
             ]
         )
         with tempfile.TemporaryDirectory() as directory:
-            self.assertEqual(output.published_launch_counts(directory), {})
+            self.assertEqual(output.published_launches(directory), [])
             output.save_launches_csv(df, output_dir=directory)
             self.assertEqual(
-                output.published_launch_counts(directory), {2025: 2, 2026: 1}
+                output.published_launches(directory),
+                [
+                    PublishedLaunch(datetime.date(2025, 1, 1), "F9", "A", 900),
+                    PublishedLaunch(datetime.date(2026, 1, 1), "FH", "B", None),
+                ],
             )
+
+
+class TestEscapeFormula(unittest.TestCase):
+    def test_every_formula_prefix_is_escaped(self):
+        for text in ("=1", "+1", "-1", "@A1", "\tx", "\rx"):
+            with self.subTest(text=repr(text)):
+                self.assertEqual(output._escape_formula(text), "'" + text)
+
+    def test_ordinary_text_is_untouched(self):
+        for text in ("Starlink", "SES-8", "1+1", "a=b"):
+            with self.subTest(text=text):
+                self.assertEqual(output._escape_formula(text), text)
+
+    def test_a_missing_csv_counts_as_a_missing_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for name in output.OUTPUT_FILES:
+                open(os.path.join(directory, name), "w").close()
+            self.assertEqual(output.missing_outputs(directory), [])
+            os.remove(os.path.join(directory, output.LAUNCHES_CSV))
+            self.assertEqual(output.missing_outputs(directory), [output.LAUNCHES_CSV])
 
 
 if __name__ == "__main__":
