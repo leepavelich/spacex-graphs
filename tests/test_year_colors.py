@@ -1,4 +1,4 @@
-"""Smoke tests for the matplotlib figures (rendered with the Agg backend)."""
+"""Tests for cumulative chart year colors (rendered with the Agg backend)."""
 
 import datetime
 import unittest
