@@ -5,8 +5,8 @@ import hashlib
 import json
 import logging
 import os
-from collections.abc import Iterable
-from typing import Any
+from collections.abc import Callable, Iterable
+from typing import Any, TypeVar, overload
 
 import requests
 
@@ -19,6 +19,8 @@ from spacex_graphs.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 def _cache_paths(url: str) -> tuple[str, str]:
@@ -51,9 +53,17 @@ def _read_meta(cache_meta_path: str) -> dict[str, str]:
         return {}
 
 
+def _write_atomically(path: str, data: bytes) -> None:
+    """Writes via a temporary file, so an interrupted run can't leave a
+    truncated file behind."""
+    temporary = f"{path}.tmp"
+    with open(temporary, "wb") as f:
+        f.write(data)
+    os.replace(temporary, path)
+
+
 def _write_meta(cache_meta_path: str, meta: dict[str, str]) -> None:
-    with open(cache_meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f)
+    _write_atomically(cache_meta_path, json.dumps(meta).encode())
 
 
 def _read_content(cache_content_path: str) -> bytes:
@@ -75,7 +85,7 @@ def _verified_at(meta: dict[str, str], cache_content_path: str) -> datetime.date
 
 def _fall_back_to_cache(
     page_name: str, reason: str, meta: dict[str, str], cache_content_path: str
-) -> tuple[bytes, bool]:
+) -> bytes:
     """Serves the cached copy after a failed fetch, unless it is too old."""
     age = _now() - _verified_at(meta, cache_content_path)
     if age > STALE_CACHE_LIMIT:
@@ -89,7 +99,7 @@ def _fall_back_to_cache(
         reason,
         _format_age(age),
     )
-    return _read_content(cache_content_path), False
+    return _read_content(cache_content_path)
 
 
 def _format_age(age: datetime.timedelta) -> str:
@@ -97,14 +107,32 @@ def _format_age(age: datetime.timedelta) -> str:
     return f"{hours // 24}d {hours % 24}h" if hours >= 24 else f"{hours}h"
 
 
-def fetch_with_cache(url: str) -> tuple[bytes, bool]:
-    """Fetches a URL with ETag/Last-Modified caching support.
+def _unparsed(content: bytes) -> bytes:
+    return content
 
-    Returns a tuple (content, not_modified) where not_modified is True when
-    the server confirmed the cached copy is still current (HTTP 304). When the
-    fetch fails, returns the cached copy if it was confirmed current within
-    STALE_CACHE_LIMIT and raises StaleCacheError otherwise; with no cached copy
-    at all, it raises FetchError.
+
+@overload
+def fetch_with_cache(url: str) -> tuple[bytes, bool]: ...
+
+
+@overload
+def fetch_with_cache(url: str, parse: Callable[[bytes], T]) -> tuple[T, bool]: ...
+
+
+def fetch_with_cache(
+    url: str, parse: Callable[[bytes], Any] = _unparsed
+) -> tuple[Any, bool]:
+    """Fetches a URL with ETag/Last-Modified caching and parses it.
+
+    Returns (parse(content), not_modified), where not_modified is True when
+    the server confirmed the cached copy is still current (HTTP 304). A new
+    download replaces the cached copy only if parse finds something in it
+    (a non-empty result), so an error or maintenance page served with HTTP
+    200 can't overwrite a good copy; it counts as a failed fetch instead.
+
+    When the fetch fails, returns the parsed cached copy if it was confirmed
+    current within STALE_CACHE_LIMIT and raises StaleCacheError otherwise;
+    with no cached copy at all, it raises FetchError.
     """
     cache_meta_path, cache_content_path = _cache_paths(url)
     page_name = WIKIPEDIA_PAGES.get(url, url)
@@ -113,6 +141,17 @@ def fetch_with_cache(url: str) -> tuple[bytes, bool]:
     # Only send validators when the body they describe is on disk; otherwise a
     # 304 would leave nothing to return
     cached_meta = _read_meta(cache_meta_path) if has_cached_content else {}
+
+    def fall_back(reason: str) -> tuple[Any, bool]:
+        if not has_cached_content:
+            raise FetchError(
+                f"{page_name} could not be fetched ({reason}) and there is no "
+                "cached copy to fall back to"
+            )
+        content = _fall_back_to_cache(
+            page_name, reason, cached_meta, cache_content_path
+        )
+        return parse(content), False
 
     request_headers = HEADERS.copy()
     if "etag" in cached_meta:
@@ -123,42 +162,29 @@ def fetch_with_cache(url: str) -> tuple[bytes, bool]:
     try:
         response = requests.get(url, headers=request_headers, timeout=REQUEST_TIMEOUT)
     except requests.RequestException as error:
-        if not has_cached_content:
-            raise FetchError(
-                f"{page_name} could not be fetched ({type(error).__name__}) and "
-                "there is no cached copy; check the network connection"
-            ) from error
-        return _fall_back_to_cache(
-            page_name, type(error).__name__, cached_meta, cache_content_path
-        )
+        return fall_back(f"{type(error).__name__}; check the network connection")
 
     if response.status_code == 304 and has_cached_content:
         logger.info("  ✓ %s (cached)", page_name)
         _write_meta(cache_meta_path, {**cached_meta, "verified_at": _now().isoformat()})
-        return _read_content(cache_content_path), True
+        return parse(_read_content(cache_content_path)), True
 
-    if response.status_code == 200:
-        logger.info("  ↓ %s (downloaded)", page_name)
-        with open(cache_content_path, "wb") as f:
-            f.write(response.content)
-        meta = {"url": url, "verified_at": _now().isoformat()}
-        if "ETag" in response.headers:
-            meta["etag"] = response.headers["ETag"]
-        if "Last-Modified" in response.headers:
-            meta["last-modified"] = response.headers["Last-Modified"]
-        _write_meta(cache_meta_path, meta)
-        return response.content, False
+    if response.status_code != 200:
+        return fall_back(f"HTTP {response.status_code}")
 
-    if has_cached_content:
-        return _fall_back_to_cache(
-            page_name, f"HTTP {response.status_code}", cached_meta, cache_content_path
-        )
+    result = parse(response.content)
+    if not result:
+        return fall_back("HTTP 200, but nothing usable in the page")
 
-    # An error status, or one that isn't usable without a cached body (a 304)
-    raise FetchError(
-        f"{page_name} returned HTTP {response.status_code} and there is no "
-        "cached copy to fall back to"
-    )
+    logger.info("  ↓ %s (downloaded)", page_name)
+    _write_atomically(cache_content_path, response.content)
+    meta = {"url": url, "verified_at": _now().isoformat()}
+    if "ETag" in response.headers:
+        meta["etag"] = response.headers["ETag"]
+    if "Last-Modified" in response.headers:
+        meta["last-modified"] = response.headers["Last-Modified"]
+    _write_meta(cache_meta_path, meta)
+    return result, False
 
 
 def _hash_file_path() -> str:

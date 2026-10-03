@@ -33,8 +33,12 @@ _FILE_ONLY_BACKENDS = {"agg", "cairo", "pdf", "pgf", "ps", "svg", "template"}
 
 def _fetch_and_parse(url: str) -> list[LaunchRecord]:
     """Fetches one page (using the HTTP cache) and parses its launch records."""
-    content, _ = cache.fetch_with_cache(url)
-    return parse_launch_page(url, content)
+    # Parsing inside the fetch lets the cache refuse a download with no
+    # launches in it, rather than replacing a good cached copy
+    records, _ = cache.fetch_with_cache(
+        url, lambda content: parse_launch_page(url, content)
+    )
+    return records
 
 
 def load_launch_records(today: datetime.date) -> list[LaunchRecord]:

@@ -72,6 +72,7 @@ class TestFetchWithCache(unittest.TestCase):
         with self.assertRaises(cache.FetchError) as ctx:
             cache.fetch_with_cache(URL)
         self.assertIn("no cached copy", str(ctx.exception))
+        self.assertIn("check the network connection", str(ctx.exception))
 
     def test_server_error_falls_back_to_cache(self):
         self._prime()
@@ -173,6 +174,46 @@ class TestFetchWithCache(unittest.TestCase):
         cache.fetch_with_cache(URL)
         self.assertEqual(
             self.get.call_args.kwargs["headers"]["If-Modified-Since"], modified
+        )
+
+    def test_304_refreshes_the_confirmation_time(self):
+        self._prime()
+        long_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=2)
+        self._set_verified_at(long_ago)
+        self.get.return_value = _response(304)
+        cache.fetch_with_cache(URL)
+        with open(cache._cache_paths(URL)[0], encoding="utf-8") as f:
+            verified_at = datetime.datetime.fromisoformat(json.load(f)["verified_at"])
+        self.assertGreater(verified_at, long_ago + datetime.timedelta(days=1))
+
+    def test_parse_result_is_returned(self):
+        self.get.return_value = _response(200, b"a,b,c")
+        result, _ = cache.fetch_with_cache(URL, lambda c: c.decode().split(","))
+        self.assertEqual(result, ["a", "b", "c"])
+
+    def test_unusable_download_keeps_the_good_cached_copy(self):
+        self._prime(b"good")
+        self.get.return_value = _response(200, b"maintenance page")
+
+        def parse(content):
+            return [] if content == b"maintenance page" else [content]
+
+        with self.assertLogs(cache.logger, "WARNING") as logs:
+            result, _ = cache.fetch_with_cache(URL, parse)
+        self.assertEqual(result, [b"good"])
+        self.assertIn("nothing usable", logs.output[0])
+        with open(cache._cache_paths(URL)[1], "rb") as f:
+            self.assertEqual(f.read(), b"good")
+
+    def test_unusable_download_without_cache_is_an_error(self):
+        self.get.return_value = _response(200, b"maintenance page")
+        with self.assertRaises(cache.FetchError):
+            cache.fetch_with_cache(URL, lambda content: [])
+
+    def test_cache_writes_leave_no_temporary_files(self):
+        self._prime()
+        self.assertFalse(
+            [name for name in os.listdir(self._tmp.name) if name.endswith(".tmp")]
         )
 
 
