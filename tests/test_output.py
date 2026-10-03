@@ -117,6 +117,34 @@ class TestSaveLaunchesCsv(unittest.TestCase):
         self.assertEqual(rows[2]["Counted Mass (kg)"], "0")
 
 
+class TestFormulaEscaping(unittest.TestCase):
+    def test_formula_like_text_is_escaped_in_the_csv(self):
+        df = build_dataframe(
+            [
+                LaunchRecord(
+                    2025,
+                    "=1+1",
+                    '=HYPERLINK("http://example.com","x")',
+                    1,
+                    datetime.datetime(2025, 1, 1),
+                    "Falcon 9",
+                    "@SUM(A1)",
+                ),
+                LaunchRecord(
+                    2025, "LEO", "Starlink", 1, datetime.datetime(2025, 2, 1), "F9"
+                ),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output.save_launches_csv(df, output_dir=directory)
+            with open(os.path.join(directory, "spacex_launches.csv"), newline="") as f:
+                rows = list(csv.DictReader(f))
+        self.assertEqual(rows[0]["Payload"], '\'=HYPERLINK("http://example.com","x")')
+        self.assertEqual(rows[0]["Orbit"], "'=1+1")
+        self.assertEqual(rows[0]["Outcome"], "'@SUM(A1)")
+        self.assertEqual(rows[1]["Payload"], "Starlink")
+
+
 class TestPublishedLaunchCounts(unittest.TestCase):
     def test_counts_rows_per_year_in_the_published_csv(self):
         df = build_dataframe(

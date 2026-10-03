@@ -59,6 +59,20 @@ def published_launch_counts(output_dir: str) -> dict[int, int]:
     return dict(Counter(int(year) for year in years))
 
 
+# Spreadsheets treat a cell starting with one of these as a formula
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _escape_formula(text: str) -> str:
+    """Stops spreadsheet apps from running Wikipedia text as a formula.
+
+    Payload and orbit text comes from Wikipedia, which anyone can edit, and the
+    CSV is published for download, so a cell like "=HYPERLINK(...)" is escaped
+    with a leading apostrophe, the standard defense against CSV injection.
+    """
+    return f"'{text}" if text.startswith(_FORMULA_PREFIXES) else text
+
+
 def save_launches_csv(df: pd.DataFrame, *, output_dir: str) -> None:
     """Saves all launches, with raw and categorized orbits, to a CSV file.
 
@@ -70,17 +84,21 @@ def save_launches_csv(df: pd.DataFrame, *, output_dir: str) -> None:
     categories always match the graphs.
     """
     launches = df.sort_values("DateTime", kind="stable")
+    text = {
+        column: launches[column].map(_escape_formula)
+        for column in ("Vehicle", "Payload", "RawOrbit", "Outcome")
+    }
     csv_df = pd.DataFrame(
         {
             "Date": launches["DateTime"].dt.strftime("%Y-%m-%d"),
             "Time (UTC)": launches["DateTime"].dt.strftime("%H:%M:%S"),
             "Year": launches["Year"],
-            "Vehicle": launches["Vehicle"],
-            "Payload": launches["Payload"],
+            "Vehicle": text["Vehicle"],
+            "Payload": text["Payload"],
             "Payload Mass (kg)": launches["ReportedMass"],
-            "Orbit": launches["RawOrbit"],
+            "Orbit": text["RawOrbit"],
             "Orbit Category": launches["Orbit"],
-            "Outcome": launches["Outcome"],
+            "Outcome": text["Outcome"],
             "Counted Mass (kg)": launches["PayloadMass"],
         }
     )
