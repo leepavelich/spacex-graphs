@@ -9,11 +9,19 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Wait a week after a release before proposing it, so a compromised or
+    # broken release is usually caught and yanked before it reaches here
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
+    # Wait a week after a release before proposing it, so a compromised or
+    # broken release is usually caught and yanked before it reaches here
+    cooldown:
+      default-days: 7
     # One PR for all pip bumps: pandas and matplotlib share a numpy ABI
     # constraint, so bumping one alone can break the other at import time
     groups:
@@ -25,3 +33,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Wait a week after a release before proposing it, so a compromised or
+    # broken release is usually caught and yanked before it reaches here
+    cooldown:
+      default-days: 7

@@ -22,7 +22,11 @@ docker compose run --rm graphs
 
 This fetches the Wikipedia pages and saves the graphs and CSV to `outputs/`. A container has no display, so Docker always saves rather than showing the graphs on screen. To add flags, include `--output` too, as in `docker compose run --rm graphs --output -q`. Downloaded pages are kept in a Docker volume, so later runs only re-download pages that changed.
 
-The container runs as a user with ID 1000. On a Linux host where your user ID differs, add `--user "$(id -u):$(id -g)"` so it can write to `outputs/`.
+The container runs as a user with ID 1000. On a Linux host where your user ID differs, run it as your own user so the files it writes in `outputs/` belong to you:
+
+```bash
+docker compose run --rm --user "$(id -u):$(id -g)" graphs
+```
 
 ## Running locally
 
@@ -52,7 +56,11 @@ With `--output`, the script writes three files to `outputs/`:
 
 Downloaded pages are cached in `.cache/`, and Wikipedia is asked only for pages that changed. If neither the launch data nor the date has changed since the last successful run, the script skips regenerating the outputs.
 
-The run fails with exit code 1, rather than publishing questionable graphs, when a page parses to no launches, a past year has no launches, or Wikipedia can't be reached and the cached pages are more than three days old.
+The run fails with exit code 1, rather than publishing questionable graphs, when:
+
+- a page parses to no launches, or a past year has none;
+- a year has more than two fewer launches than the published CSV, which usually means part of a table stopped parsing;
+- Wikipedia can't be reached and the cached pages are more than three days old, or there are no cached pages.
 
 A GitHub Actions workflow runs the script daily and commits any changed outputs, which keeps the graphs above current.
 

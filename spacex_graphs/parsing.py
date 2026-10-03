@@ -7,6 +7,8 @@ from typing import NamedTuple
 
 from bs4 import BeautifulSoup, Tag
 
+from spacex_graphs.config import TableLayout
+
 
 class LaunchRecord(NamedTuple):
     """A single launch parsed from Wikipedia, as Wikipedia reports it.
@@ -77,6 +79,10 @@ def _mass_before_unit(s: str, unit: str) -> float | None:
     return None
 
 
+# Units in order of precedence: a cell's metric figure wins over pounds
+_UNITS_TO_KG = (("kg", 1.0), (r"(?:t|tonnes?)", 1000.0), (r"lbs?", _KG_PER_LB))
+
+
 def parse_payload_mass_text(text: str | None) -> int | None:
     """Parses a payload mass cell into an integer mass in kg.
 
@@ -85,10 +91,10 @@ def parse_payload_mass_text(text: str | None) -> int | None:
     - "5,000–6,000 kg" or "5000 to 6000 kg" (returns the average 5,500)
     - "~16,000 kg (35,000 lb)" (returns 16000)
     - "75,200 lb (34,100 kg)" (the kg figure wins wherever it appears)
-    - "2,500 lb" with no kg figure (converted to kg)
-    Footnote markers like "[12]" are removed first, so "Classified[12]"
-    returns 0 rather than 12. Numbers not attached to a unit (years, counts)
-    are only used when the cell has no unit at all. Returns None when the cell
+    - "1.5 t" or "1.5 tonnes" (1,500), and "2,500 lb" or "2,500 lbs" (1,134)
+    Footnote markers like "[12]" are removed first, so "Classified[12]" has no
+    mass (None) rather than 12 kg. Only numbers attached to a unit count, so
+    "Unknown (22 satellites)" has no mass either. Returns None when the cell
     holds no mass, such as "Unknown", "Classified", or "—".
     """
     if not text:
@@ -99,21 +105,10 @@ def parse_payload_mass_text(text: str | None) -> int | None:
     # Join digit groups separated by a space, nbsp, or narrow nbsp ("16 000")
     s = re.sub(r"(?<=\d)[ \u00a0\u202f](?=\d{3}(?!\d))", "", s)
 
-    kg = _mass_before_unit(s, "kg")
-    if kg is not None:
-        return round(kg)
-
-    lb = _mass_before_unit(s, "lb")
-    if lb is not None:
-        return round(lb * _KG_PER_LB)
-
-    range_match = re.search(_RANGE, s)
-    if range_match:
-        return round((_to_float(range_match[1]) + _to_float(range_match[2])) / 2)
-    single_match = re.search(_NUMBER, s)
-    if single_match:
-        return round(_to_float(single_match[0]))
-
+    for unit, kg_per_unit in _UNITS_TO_KG:
+        mass = _mass_before_unit(s, unit)
+        if mass is not None:
+            return round(mass * kg_per_unit)
     return None
 
 
@@ -201,32 +196,19 @@ def _parse_starship_row(cols: Sequence[Tag]) -> LaunchRecord | None:
     )
 
 
-def drop_duplicate_launches(
-    records: Sequence[LaunchRecord],
-) -> tuple[list[LaunchRecord], int]:
-    """Removes launches listed more than once, keeping the first listing.
+_ROW_PARSERS: dict[TableLayout, Callable[[Sequence[Tag]], LaunchRecord | None]] = {
+    "falcon": _parse_falcon_row,
+    "starship": _parse_starship_row,
+}
 
-    When Wikipedia splits a year out of the current list, both pages can list
-    the same launches for a while. A vehicle can't launch twice at the same
-    minute, so launch time and vehicle identify a launch. Returns the unique
-    records and how many duplicates were dropped.
+
+def parse_launch_page(layout: TableLayout, content: bytes | str) -> list[LaunchRecord]:
+    """Parses all launch records from a Wikipedia launch-list page.
+
+    layout names the page's table layout (config.Page.layout), which picks
+    the row parser.
     """
-    seen: set[tuple[datetime.datetime, str]] = set()
-    unique = []
-    for record in records:
-        key = (record.launch_datetime, record.vehicle)
-        if key not in seen:
-            seen.add(key)
-            unique.append(record)
-    return unique, len(records) - len(unique)
-
-
-def parse_launch_page(url: str, content: bytes | str) -> list[LaunchRecord]:
-    """Parses all launch records from a Wikipedia launch-list page."""
-    parse_row: Callable[[Sequence[Tag]], LaunchRecord | None] = (
-        _parse_starship_row if "Starship" in url else _parse_falcon_row
-    )
-
+    parse_row = _ROW_PARSERS[layout]
     soup = BeautifulSoup(content, "html.parser")
     records: list[LaunchRecord] = []
     for table in soup.find_all("table", {"class": "wikitable"}):

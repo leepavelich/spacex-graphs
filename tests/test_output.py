@@ -5,7 +5,6 @@ import datetime
 import os
 import tempfile
 import unittest
-from unittest import mock
 
 import matplotlib
 
@@ -30,8 +29,7 @@ def _figure():
 
 def _render_svgs(directory):
     figs = (_figure(), _figure())
-    with mock.patch.object(output, "OUTPUT_DIR", directory):
-        output.save_plots(*figs)
+    output.save_plots(*figs, output_dir=directory)
     plt.close("all")
     contents = {}
     for name in sorted(os.listdir(directory)):
@@ -85,8 +83,7 @@ class TestSaveLaunchesCsv(unittest.TestCase):
             ]
         )
         with tempfile.TemporaryDirectory() as directory:
-            with mock.patch.object(output, "OUTPUT_DIR", directory):
-                output.save_launches_csv(df)
+            output.save_launches_csv(df, output_dir=directory)
             with open(os.path.join(directory, "spacex_launches.csv"), newline="") as f:
                 rows = list(csv.DictReader(f))
 
@@ -118,6 +115,51 @@ class TestSaveLaunchesCsv(unittest.TestCase):
         self.assertEqual(rows[2]["Payload Mass (kg)"], "")
         self.assertEqual(rows[2]["Outcome"], "Failure")
         self.assertEqual(rows[2]["Counted Mass (kg)"], "0")
+
+
+class TestFormulaEscaping(unittest.TestCase):
+    def test_formula_like_text_is_escaped_in_the_csv(self):
+        df = build_dataframe(
+            [
+                LaunchRecord(
+                    2025,
+                    "=1+1",
+                    '=HYPERLINK("http://example.com","x")',
+                    1,
+                    datetime.datetime(2025, 1, 1),
+                    "Falcon 9",
+                    "@SUM(A1)",
+                ),
+                LaunchRecord(
+                    2025, "LEO", "Starlink", 1, datetime.datetime(2025, 2, 1), "F9"
+                ),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output.save_launches_csv(df, output_dir=directory)
+            with open(os.path.join(directory, "spacex_launches.csv"), newline="") as f:
+                rows = list(csv.DictReader(f))
+        self.assertEqual(rows[0]["Payload"], '\'=HYPERLINK("http://example.com","x")')
+        self.assertEqual(rows[0]["Orbit"], "'=1+1")
+        self.assertEqual(rows[0]["Outcome"], "'@SUM(A1)")
+        self.assertEqual(rows[1]["Payload"], "Starlink")
+
+
+class TestPublishedLaunchCounts(unittest.TestCase):
+    def test_counts_rows_per_year_in_the_published_csv(self):
+        df = build_dataframe(
+            [
+                LaunchRecord(2025, "LEO", "A", 1, datetime.datetime(2025, 1, 1), "F9"),
+                LaunchRecord(2025, "LEO", "B", 1, datetime.datetime(2025, 2, 1), "F9"),
+                LaunchRecord(2026, "LEO", "C", 1, datetime.datetime(2026, 1, 1), "F9"),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(output.published_launch_counts(directory), {})
+            output.save_launches_csv(df, output_dir=directory)
+            self.assertEqual(
+                output.published_launch_counts(directory), {2025: 2, 2026: 1}
+            )
 
 
 if __name__ == "__main__":

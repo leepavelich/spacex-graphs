@@ -7,8 +7,6 @@ import unittest
 from spacex_graphs.parsing import parse_launch_page
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
-FALCON_URL = "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches"
-STARSHIP_URL = "https://en.wikipedia.org/wiki/List_of_Starship_launches"
 
 
 def _parse(filename, url):
@@ -22,7 +20,7 @@ def _parse(filename, url):
 class TestRealFalconPage(unittest.TestCase):
     def test_launches_match_snapshot(self):
         self.assertEqual(
-            _parse("falcon_launches.html", FALCON_URL),
+            _parse("falcon_launches.html", "falcon"),
             [
                 (
                     datetime.datetime(2025, 1, 4, 1, 27),
@@ -73,13 +71,13 @@ class TestRealFalconPage(unittest.TestCase):
         # The fixture includes rows from the 6-column planned-launch table
         html = (FIXTURES / "falcon_launches.html").read_text(encoding="utf-8")
         self.assertGreater(html.count('<table class="wikitable">'), 1)
-        self.assertEqual(len(_parse("falcon_launches.html", FALCON_URL)), 6)
+        self.assertEqual(len(_parse("falcon_launches.html", "falcon")), 6)
 
 
 class TestRealStarshipPage(unittest.TestCase):
     def test_launches_match_snapshot(self):
         self.assertEqual(
-            _parse("starship_launches.html", STARSHIP_URL),
+            _parse("starship_launches.html", "starship"),
             [
                 (
                     datetime.datetime(2024, 3, 14, 13, 25),

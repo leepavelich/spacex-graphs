@@ -4,15 +4,10 @@ import datetime
 import unittest
 
 from spacex_graphs.parsing import (
-    LaunchRecord,
-    drop_duplicate_launches,
     parse_launch_datetime,
     parse_launch_page,
     parse_payload_mass_text,
 )
-
-STARSHIP_URL = "https://en.wikipedia.org/wiki/List_of_Starship_launches"
-FALCON_URL = "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches"
 
 
 def _falcon_row(date, booster, payload, mass, orbit, outcome):
@@ -124,6 +119,17 @@ class TestParsePayloadMassText(unittest.TestCase):
     def test_kg_figure_wins_over_leading_pounds(self):
         self.assertEqual(parse_payload_mass_text("75,200 lb (34,100 kg)"), 34100)
 
+    def test_tonnes_and_lbs(self):
+        self.assertEqual(parse_payload_mass_text("1.5 t"), 1500)
+        self.assertEqual(parse_payload_mass_text("~100 tonnes"), 100000)
+        self.assertEqual(parse_payload_mass_text("2,500 lbs"), 1134)
+        self.assertEqual(parse_payload_mass_text("16 t (35,000 lb)"), 16000)
+
+    def test_numbers_without_a_unit_are_not_masses(self):
+        for text in ("Unknown (22 satellites)", "Group 6-12", "2025", "~16,000"):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_payload_mass_text(text))
+
     def test_pounds_only_is_converted(self):
         self.assertEqual(parse_payload_mass_text("2,500 lb"), 1134)
 
@@ -149,7 +155,7 @@ class TestParseStarshipRow(unittest.TestCase):
                 "Success",
             )
         )
-        (record,) = parse_launch_page(STARSHIP_URL, html)
+        (record,) = parse_launch_page("starship", html)
         self.assertEqual(record.launch_datetime, datetime.datetime(2026, 9, 20, 23, 0))
         self.assertEqual(record.vehicle, "Block 3 Starship")
         self.assertEqual(record.payload, "20 Starlink V3")
@@ -167,7 +173,7 @@ class TestParseStarshipRow(unittest.TestCase):
                 "Failure",
             )
         )
-        (record,) = parse_launch_page(STARSHIP_URL, html)
+        (record,) = parse_launch_page("starship", html)
         self.assertEqual(record.vehicle, "Block 2 Starship")
         self.assertEqual(record.payload_mass, 16000)
         self.assertEqual(record.outcome, "Failure")
@@ -183,18 +189,18 @@ class TestParseStarshipRow(unittest.TestCase):
                 "Success",
             )
         )
-        (record,) = parse_launch_page(STARSHIP_URL, html)
+        (record,) = parse_launch_page("starship", html)
         self.assertEqual(record.payload, "Starship Test")
         self.assertIsNone(record.payload_mass)
 
     def test_unexpected_column_count_is_skipped(self):
         html = _starship_table("<tr><td>September 2026</td><td>Block 3</td></tr>")
-        self.assertEqual(parse_launch_page(STARSHIP_URL, html), [])
+        self.assertEqual(parse_launch_page("starship", html), [])
 
 
 class TestParseFalconPage(unittest.TestCase):
     def _parse(self, *rows):
-        return parse_launch_page(FALCON_URL, _starship_table(*rows))
+        return parse_launch_page("falcon", _starship_table(*rows))
 
     def test_successful_falcon_9_launch(self):
         (record,) = self._parse(
@@ -275,7 +281,7 @@ class TestCellText(unittest.TestCase):
         html = _starship_table(
             _falcon_row("3 January 2025", "F9", payload, mass, orbit, "Success")
         )
-        (record,) = parse_launch_page(FALCON_URL, html)
+        (record,) = parse_launch_page("falcon", html)
         return record
 
     def test_line_breaks_separate_words(self):
@@ -299,19 +305,27 @@ class TestCellText(unittest.TestCase):
         self.assertEqual(self._record(mass="4,700<br/>172 kg").payload_mass, 172)
 
 
-class TestDropDuplicateLaunches(unittest.TestCase):
-    def test_same_time_and_vehicle_is_one_launch(self):
-        when = datetime.datetime(2025, 1, 6, 20, 43)
-        first = LaunchRecord(2025, "LEO", "Starlink 6-71[12]", 1, when, "Falcon 9")
-        relisted = LaunchRecord(2025, "LEO", "Starlink 6-71[48]", 1, when, "Falcon 9")
-        unique, dropped = drop_duplicate_launches([first, relisted])
-        self.assertEqual((unique, dropped), ([first], 1))
+class TestPageLayouts(unittest.TestCase):
+    def test_every_page_has_a_parser_and_a_unique_name_and_url(self):
+        from spacex_graphs.config import WIKIPEDIA_PAGES
+        from spacex_graphs.parsing import _ROW_PARSERS
 
-    def test_different_vehicles_at_the_same_time_are_kept(self):
-        when = datetime.datetime(2025, 1, 6, 20, 43)
-        falcon = LaunchRecord(2025, "LEO", "A", 1, when, "Falcon 9")
-        starship = LaunchRecord(2025, "LEO", "B", 1, when, "Block 2 Starship")
-        self.assertEqual(drop_duplicate_launches([falcon, starship])[1], 0)
+        for page in WIKIPEDIA_PAGES:
+            with self.subTest(page=page.name):
+                self.assertIn(page.layout, _ROW_PARSERS)
+        self.assertEqual(len({p.name for p in WIKIPEDIA_PAGES}), len(WIKIPEDIA_PAGES))
+        self.assertEqual(len({p.url for p in WIKIPEDIA_PAGES}), len(WIKIPEDIA_PAGES))
+
+    def test_layout_picks_the_row_parser(self):
+        html = _starship_table(
+            _starship_row(
+                "May 27, 2025 23:36", "Block 2 S35", "X", "1 kg", "LEO", "Success"
+            )
+        )
+        self.assertEqual(len(parse_launch_page("starship", html)), 1)
+        # The 11-cell Starship row read as a Falcon row lands in the wrong columns
+        (falcon_reading,) = parse_launch_page("falcon", html)
+        self.assertEqual(falcon_reading.vehicle, "Falcon 9")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from spacex_graphs.transform import (
     build_cumulative_frame,
     build_dataframe,
     categorize_starlink,
+    chart_caption,
     clean_orbit_category,
     launch_succeeded,
     payload_mass_by_year_orbit,
@@ -239,6 +240,35 @@ class TestBuildDataFrame(unittest.TestCase):
         ]:
             with self.subTest(outcome=outcome):
                 self.assertEqual(launch_succeeded(outcome), counts)
+
+
+class TestChartCaption(unittest.TestCase):
+    def test_names_the_source_latest_launch_and_unknown_masses(self):
+        df = build_dataframe(
+            [
+                LaunchRecord(
+                    2026, "LEO", "A", 100, datetime.datetime(2026, 9, 2), "F9"
+                ),
+                LaunchRecord(
+                    2026, "LEO", "NROL", None, datetime.datetime(2026, 8, 1), "F9"
+                ),
+                # Failed launches already count 0, so they aren't "unknown"
+                LaunchRecord(
+                    2026,
+                    "LEO",
+                    "B",
+                    None,
+                    datetime.datetime(2026, 7, 1),
+                    "F9",
+                    "Failure",
+                ),
+            ]
+        )
+        caption = chart_caption(df)
+        self.assertIn("Wikipedia", caption)
+        self.assertIn("CC BY-SA 4.0", caption)
+        self.assertIn("through 2 September 2026", caption)
+        self.assertIn("1 successful launch with unknown", caption)
 
 
 class TestBuildCumulativeFrame(unittest.TestCase):

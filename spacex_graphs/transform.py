@@ -81,6 +81,25 @@ def build_dataframe(records: Sequence[LaunchRecord]) -> pd.DataFrame:
     return df
 
 
+def chart_caption(df: pd.DataFrame) -> str:
+    """The note under each chart: its source, how current it is, and the
+    launches whose unknown mass counts as zero.
+
+    Built only from the data (not the clock), so the charts change only when
+    the launches do.
+    """
+    latest = df["DateTime"].max()
+    unknown = int(
+        (df["ReportedMass"].isna() & df["Outcome"].map(launch_succeeded)).sum()
+    )
+    launches = "launch" if unknown == 1 else "launches"
+    return (
+        f"Source: Wikipedia launch lists (CC BY-SA 4.0), launches through "
+        f"{latest:%-d %B %Y}. {unknown} successful {launches} with unknown or "
+        "classified payload mass count as 0 kg."
+    )
+
+
 def payload_mass_by_year_orbit(df: pd.DataFrame) -> pd.DataFrame:
     """Sums payload mass grouped by year and orbit category."""
     return df.groupby(["Year", "Orbit"])["PayloadMass"].sum().reset_index()

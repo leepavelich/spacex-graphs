@@ -83,6 +83,17 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
         totals = [text.get_text() for text in ax.texts]
         self.assertEqual(totals, ["1,300", "2,000"])
 
+    def test_current_year_is_marked_ytd_and_caption_is_shown(self):
+        df = build_dataframe(
+            [_record(2025, "LEO", "Starlink A", 1000), _record(2026, "GTO", "SES", 300)]
+        )
+        fig = plot_payload_mass_to_orbit_by_year(
+            payload_mass_by_year_orbit(df), current_year=2026, caption="Source: test"
+        )
+        labels = [label.get_text() for label in fig.axes[0].get_xticklabels()]
+        self.assertEqual(labels, ["2025", "2026 YTD"])
+        self.assertEqual([text.get_text() for text in fig.texts], ["Source: test"])
+
 
 if __name__ == "__main__":
     unittest.main()
