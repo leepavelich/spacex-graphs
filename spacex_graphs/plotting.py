@@ -6,6 +6,7 @@ import datetime
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
+from spacex_graphs.config import HIGHLIGHT_FROM_YEAR
 from spacex_graphs.transform import add_end_of_period_entries
 
 # Colors for each orbit category, in legend order
@@ -23,8 +24,9 @@ ORBIT_COLORS = {
 }
 
 # Most recent years get the first colors. This eight-hue order is validated
-# for colorblind-safe separation between adjacent slots; older years fold
-# into one muted context group rather than reusing or inventing hues.
+# for colorblind-safe separation between adjacent slots. Years before
+# HIGHLIGHT_FROM_YEAR, and any beyond the eight most recent, fold into one
+# muted context group rather than reusing or inventing hues.
 YEAR_COLORS = [
     "#2a78d6",  # blue
     "#eb6834",  # orange
@@ -99,8 +101,9 @@ def plot_cumulative_payload_mass_to_orbit(df_filtered):
     df_extended = add_end_of_period_entries(df_filtered)
 
     sorted_years = sorted(df_extended["Year"].unique(), reverse=True)
-    year_color_map = dict(zip(sorted_years, YEAR_COLORS))
-    older_years = sorted_years[len(YEAR_COLORS) :]
+    highlighted_years = [y for y in sorted_years if y >= HIGHLIGHT_FROM_YEAR]
+    year_color_map = dict(zip(highlighted_years, YEAR_COLORS))
+    older_years = [y for y in sorted_years if y not in year_color_map]
     if len(older_years) == 1:
         older_label = str(older_years[0])
     elif older_years:

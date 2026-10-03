@@ -21,6 +21,10 @@ WIKIPEDIA_PAGES = {
 # The cumulative graph only shows years from this one onwards
 MIN_CUMULATIVE_YEAR = 2017
 
+# Years before this are drawn in muted grey as context: their payload mass is
+# tiny next to recent years, so they shouldn't compete for attention
+HIGHLIGHT_FROM_YEAR = 2020
+
 # Maps raw Wikipedia orbit descriptions to standardized categories. Footnote
 # markers like "[338]" are stripped before lookup, so keys never include them.
 ORBIT_MAPPING = {
