@@ -109,8 +109,8 @@ class TestParsePayloadMassText(unittest.TestCase):
         self.assertEqual(parse_payload_mass_text("5000 to 6000 kg"), 5500)
 
     def test_footnote_digits_are_not_mass(self):
-        self.assertEqual(parse_payload_mass_text("Classified[12]"), 0)
-        self.assertEqual(parse_payload_mass_text("Unknown[232]"), 0)
+        self.assertIsNone(parse_payload_mass_text("Classified[12]"))
+        self.assertIsNone(parse_payload_mass_text("Unknown[232]"))
         self.assertEqual(parse_payload_mass_text("[12] 5,000 kg"), 5000)
 
     def test_unrelated_numbers_are_ignored_when_kg_present(self):
@@ -131,10 +131,10 @@ class TestParsePayloadMassText(unittest.TestCase):
         self.assertEqual(parse_payload_mass_text("0.5 kg"), 0)
         self.assertEqual(parse_payload_mass_text("12.6 kg"), 13)
 
-    def test_unparseable_returns_zero(self):
-        self.assertEqual(parse_payload_mass_text("—"), 0)
-        self.assertEqual(parse_payload_mass_text(""), 0)
-        self.assertEqual(parse_payload_mass_text(None), 0)
+    def test_no_mass_returns_none(self):
+        self.assertIsNone(parse_payload_mass_text("—"))
+        self.assertIsNone(parse_payload_mass_text(""))
+        self.assertIsNone(parse_payload_mass_text(None))
 
 
 class TestParseStarshipRow(unittest.TestCase):
@@ -156,7 +156,7 @@ class TestParseStarshipRow(unittest.TestCase):
         self.assertEqual(record.payload_mass, 34100)
         self.assertEqual(record.orbit, "LEO")
 
-    def test_failed_flight_has_zero_mass(self):
+    def test_failed_flight_keeps_reported_mass_and_outcome(self):
         html = _starship_table(
             _starship_row(
                 "May 27, 2025 23:36:28",
@@ -169,7 +169,8 @@ class TestParseStarshipRow(unittest.TestCase):
         )
         (record,) = parse_launch_page(STARSHIP_URL, html)
         self.assertEqual(record.vehicle, "Block 2 Starship")
-        self.assertEqual(record.payload_mass, 0)
+        self.assertEqual(record.payload_mass, 16000)
+        self.assertEqual(record.outcome, "Failure")
 
     def test_empty_payload_with_hidden_sort_key(self):
         html = _starship_table(
@@ -184,7 +185,7 @@ class TestParseStarshipRow(unittest.TestCase):
         )
         (record,) = parse_launch_page(STARSHIP_URL, html)
         self.assertEqual(record.payload, "Starship Test")
-        self.assertEqual(record.payload_mass, 0)
+        self.assertIsNone(record.payload_mass)
 
     def test_unexpected_column_count_is_skipped(self):
         html = _starship_table("<tr><td>September 2026</td><td>Block 3</td></tr>")
@@ -224,9 +225,9 @@ class TestParseFalconPage(unittest.TestCase):
             )
         )
         self.assertEqual(record.vehicle, "Falcon Heavy")
-        self.assertEqual(record.payload_mass, 0)
+        self.assertIsNone(record.payload_mass)
 
-    def test_failed_launch_counts_no_mass(self):
+    def test_failed_launch_keeps_reported_mass_and_outcome(self):
         (record,) = self._parse(
             _falcon_row(
                 "12 July 2024 02:35",
@@ -237,7 +238,8 @@ class TestParseFalconPage(unittest.TestCase):
                 "Failure",
             )
         )
-        self.assertEqual(record.payload_mass, 0)
+        self.assertEqual(record.payload_mass, 16000)
+        self.assertEqual(record.outcome, "Failure")
 
     def test_payload_continuation_and_planned_rows_skipped(self):
         records = self._parse(

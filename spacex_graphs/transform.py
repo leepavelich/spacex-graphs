@@ -34,19 +34,42 @@ def categorize_starlink(payload: str, orbit: str) -> str:
     return orbit
 
 
+def launch_succeeded(outcome: str) -> bool:
+    """Whether a launch's payload mass counts toward the graphs.
+
+    Wikipedia's outcomes include "Success", "Failure", "Precluded (pre-flight
+    failure)", and, for the 2020 Crew Dragon abort test, "Successful simulated
+    failure", which did deliver its payload. Matching the start of the text
+    keeps "Unsuccessful" or "Partial success" from counting.
+    """
+    return outcome.lower().startswith("success")
+
+
 def build_dataframe(records: Sequence[LaunchRecord]) -> pd.DataFrame:
     """Builds the launch DataFrame with standardized orbit categories.
 
-    "Orbit" holds the category used by the graphs; "RawOrbit" keeps the
-    Wikipedia text for the CSV export.
+    "Orbit" holds the category used by the graphs and "RawOrbit" the
+    Wikipedia text. "ReportedMass" is the mass Wikipedia gives (missing when
+    unknown), and "PayloadMass" is the mass the graphs count: the reported
+    mass for successful launches, and 0 for failures or unknown masses.
     """
     df = pd.DataFrame(
-        records,
-        columns=["Year", "RawOrbit", "Payload", "PayloadMass", "DateTime", "Vehicle"],
+        {
+            "Year": [r.year for r in records],
+            "RawOrbit": [r.orbit for r in records],
+            "Payload": [r.payload for r in records],
+            "ReportedMass": pd.array([r.payload_mass for r in records], dtype="Int64"),
+            "PayloadMass": [
+                (r.payload_mass or 0) if launch_succeeded(r.outcome) else 0
+                for r in records
+            ],
+            "DateTime": pd.to_datetime([r.launch_datetime for r in records]),
+            "Vehicle": [r.vehicle for r in records],
+            "Outcome": [r.outcome for r in records],
+        }
     )
     df["Orbit"] = [
-        clean_orbit_category(categorize_starlink(payload, orbit))
-        for payload, orbit in zip(df["Payload"], df["RawOrbit"], strict=True)
+        clean_orbit_category(categorize_starlink(r.payload, r.orbit)) for r in records
     ]
     return df
 

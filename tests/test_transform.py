@@ -9,6 +9,7 @@ from spacex_graphs.transform import (
     build_dataframe,
     categorize_starlink,
     clean_orbit_category,
+    launch_succeeded,
     payload_mass_by_year_orbit,
 )
 
@@ -137,6 +138,33 @@ class TestBuildDataFrame(unittest.TestCase):
         )
         grouped = payload_mass_by_year_orbit(df)
         self.assertEqual(list(grouped.columns), ["Year", "Orbit", "PayloadMass"])
+
+
+class TestCountedMass(unittest.TestCase):
+    def test_only_successful_launches_with_known_mass_count(self):
+        when = datetime.datetime(2024, 1, 5)
+        df = build_dataframe(
+            [
+                LaunchRecord(2024, "LEO", "A", 100, when, "Falcon 9", "Success"),
+                LaunchRecord(2024, "LEO", "B", 200, when, "Falcon 9", "Failure"),
+                LaunchRecord(2024, "LEO", "C", None, when, "Falcon 9", "Success"),
+            ]
+        )
+        self.assertEqual(list(df["PayloadMass"]), [100, 0, 0])
+        self.assertEqual(df["ReportedMass"].tolist()[:2], [100, 200])
+        self.assertTrue(df["ReportedMass"].isna().iloc[2])
+
+    def test_outcome_classification(self):
+        for outcome, counts in [
+            ("Success", True),
+            ("Successful simulated failure", True),
+            ("Failure", False),
+            ("Precluded (pre-flight failure)", False),
+            ("Unsuccessful", False),
+            ("Partial success", False),
+        ]:
+            with self.subTest(outcome=outcome):
+                self.assertEqual(launch_succeeded(outcome), counts)
 
 
 class TestBuildCumulativeFrame(unittest.TestCase):

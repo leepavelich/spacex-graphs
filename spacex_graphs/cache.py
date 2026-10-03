@@ -164,7 +164,9 @@ def compute_data_hash(records: Iterable[tuple[Any, ...]], today: datetime.date) 
     extends to today, so the outputs legitimately change once per day even
     when no launch data does.
     """
-    data_str = json.dumps(sorted(records), sort_keys=True, default=str)
+    # Sort the serialized records: records themselves can't be ordered once a
+    # field may be None
+    data_str = json.dumps(sorted(json.dumps(r, default=str) for r in records))
     combined = f"{today.isoformat()}:{data_str}"
     return hashlib.sha256(combined.encode()).hexdigest()
 

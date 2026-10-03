@@ -51,6 +51,10 @@ def save_plots(fig_by_year: Figure, fig_cumulative: Figure) -> None:
 def save_launches_csv(df: pd.DataFrame) -> None:
     """Saves all launches, with raw and categorized orbits, to a CSV file.
 
+    "Payload Mass (kg)" is what Wikipedia reports, blank when unknown or
+    classified; "Counted Mass (kg)" is what the graphs sum, which is 0 for
+    failed launches and unknown masses.
+
     Takes the frame from transform.build_dataframe so the CSV's orbit
     categories always match the graphs.
     """
@@ -62,9 +66,11 @@ def save_launches_csv(df: pd.DataFrame) -> None:
             "Year": launches["Year"],
             "Vehicle": launches["Vehicle"],
             "Payload": launches["Payload"],
-            "Payload Mass (kg)": launches["PayloadMass"],
+            "Payload Mass (kg)": launches["ReportedMass"],
             "Orbit": launches["RawOrbit"],
             "Orbit Category": launches["Orbit"],
+            "Outcome": launches["Outcome"],
+            "Counted Mass (kg)": launches["PayloadMass"],
         }
     )
 

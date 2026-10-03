@@ -73,6 +73,15 @@ class TestSaveLaunchesCsv(unittest.TestCase):
                     datetime.datetime(2025, 7, 4),
                     "Falcon Heavy",
                 ),
+                LaunchRecord(
+                    2026,
+                    "LEO",
+                    "NROL-97",
+                    None,
+                    datetime.datetime(2026, 9, 1),
+                    "Falcon 9",
+                    "Failure",
+                ),
             ]
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -92,14 +101,23 @@ class TestSaveLaunchesCsv(unittest.TestCase):
                 "Payload Mass (kg)",
                 "Orbit",
                 "Orbit Category",
+                "Outcome",
+                "Counted Mass (kg)",
             ],
         )
-        self.assertEqual([row["Date"] for row in rows], ["2025-07-04", "2026-02-01"])
+        self.assertEqual(
+            [row["Date"] for row in rows], ["2025-07-04", "2026-02-01", "2026-09-01"]
+        )
         self.assertEqual(rows[1]["Time (UTC)"], "05:30:00")
         self.assertEqual(rows[0]["Orbit"], "GTO[12]")
         self.assertEqual(rows[0]["Orbit Category"], "GTO/GEO")
         self.assertEqual(rows[1]["Orbit Category"], "LEO (Starlink)")
         self.assertEqual(rows[1]["Payload Mass (kg)"], "17000")
+        self.assertEqual(rows[1]["Counted Mass (kg)"], "17000")
+        # Unknown mass is blank rather than a misleading 0; failures count 0
+        self.assertEqual(rows[2]["Payload Mass (kg)"], "")
+        self.assertEqual(rows[2]["Outcome"], "Failure")
+        self.assertEqual(rows[2]["Counted Mass (kg)"], "0")
 
 
 if __name__ == "__main__":

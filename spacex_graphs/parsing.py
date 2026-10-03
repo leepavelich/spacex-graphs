@@ -9,14 +9,21 @@ from bs4 import BeautifulSoup, Tag
 
 
 class LaunchRecord(NamedTuple):
-    """A single launch parsed from Wikipedia."""
+    """A single launch parsed from Wikipedia, as Wikipedia reports it.
+
+    payload_mass is the reported mass in kg, or None when Wikipedia gives no
+    mass (unknown or classified payloads); it is kept for failed launches too.
+    outcome is the launch outcome text, such as "Success" or "Failure".
+    Whether a launch's mass counts in the graphs is decided in transform.
+    """
 
     year: int
     orbit: str
     payload: str
-    payload_mass: int
+    payload_mass: int | None
     launch_datetime: datetime.datetime
     vehicle: str
+    outcome: str = "Success"
 
 
 def parse_launch_datetime(text: str) -> datetime.datetime | None:
@@ -70,7 +77,7 @@ def _mass_before_unit(s: str, unit: str) -> float | None:
     return None
 
 
-def parse_payload_mass_text(text: str | None) -> int:
+def parse_payload_mass_text(text: str | None) -> int | None:
     """Parses a payload mass cell into an integer mass in kg.
 
     Handles values like:
@@ -81,10 +88,11 @@ def parse_payload_mass_text(text: str | None) -> int:
     - "2,500 lb" with no kg figure (converted to kg)
     Footnote markers like "[12]" are removed first, so "Classified[12]"
     returns 0 rather than 12. Numbers not attached to a unit (years, counts)
-    are only used when the cell has no unit at all. Returns 0 if not parseable.
+    are only used when the cell has no unit at all. Returns None when the cell
+    holds no mass, such as "Unknown", "Classified", or "—".
     """
     if not text:
-        return 0
+        return None
 
     s = re.sub(r"\[[^\]]*\]", "", str(text))
     s = s.replace("\u2013", "-").replace("\u2014", "-")  # en/em dash -> hyphen
@@ -106,7 +114,7 @@ def parse_payload_mass_text(text: str | None) -> int:
     if single_match:
         return round(_to_float(single_match[0]))
 
-    return 0
+    return None
 
 
 def _cell_text(cell: Tag, line_separator: str = " ") -> str:
@@ -142,15 +150,17 @@ def _parse_falcon_row(cols: Sequence[Tag]) -> LaunchRecord | None:
     # "; " keeps separate lines from being read as one space-grouped number
     payload_mass = parse_payload_mass_text(_cell_text(cols[4], "; "))
     orbit = _cell_text(cols[5])
-    launch_outcome = _cell_text(cols[7]).lower()
-
-    if "success" not in launch_outcome:
-        payload_mass = 0
-
+    outcome = _cell_text(cols[7])
     vehicle = "Falcon Heavy" if "Heavy" in booster or "FH" in booster else "Falcon 9"
 
     return LaunchRecord(
-        launch_datetime.year, orbit, payload, payload_mass, launch_datetime, vehicle
+        year=launch_datetime.year,
+        orbit=orbit,
+        payload=payload,
+        payload_mass=payload_mass,
+        launch_datetime=launch_datetime,
+        vehicle=vehicle,
+        outcome=outcome,
     )
 
 
@@ -168,26 +178,26 @@ def _parse_starship_row(cols: Sequence[Tag]) -> LaunchRecord | None:
 
     ship_version = _cell_text(cols[2])
     payload = _cell_text(cols[4])
-    payload_mass_text = _cell_text(cols[5], "; ")
+    payload_mass = parse_payload_mass_text(_cell_text(cols[5], "; "))
     orbit = _cell_text(cols[6])
-    launch_outcome = _cell_text(cols[8]).lower()
+    outcome = _cell_text(cols[8])
 
     # Extract block version from ship (e.g., "Block 1S24" -> "Block 1 Starship")
     block_match = re.search(r"Block\s+(\d+)", ship_version)
     vehicle = f"Block {block_match.group(1)} Starship" if block_match else "Starship"
-
-    # Only successful launches count payload mass
-    if "success" in launch_outcome:
-        payload_mass = parse_payload_mass_text(payload_mass_text)
-    else:
-        payload_mass = 0
 
     # An empty payload cell shows just "—" (its "N/a" sort key is hidden)
     if payload.startswith("—") or not payload:
         payload = "Starship Test"
 
     return LaunchRecord(
-        launch_datetime.year, orbit, payload, payload_mass, launch_datetime, vehicle
+        year=launch_datetime.year,
+        orbit=orbit,
+        payload=payload,
+        payload_mass=payload_mass,
+        launch_datetime=launch_datetime,
+        vehicle=vehicle,
+        outcome=outcome,
     )
 
 
