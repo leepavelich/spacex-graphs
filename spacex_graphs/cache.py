@@ -103,7 +103,8 @@ def fetch_with_cache(url: str) -> tuple[bytes, bool]:
     Returns a tuple (content, not_modified) where not_modified is True when
     the server confirmed the cached copy is still current (HTTP 304). When the
     fetch fails, returns the cached copy if it was confirmed current within
-    STALE_CACHE_LIMIT, and raises StaleCacheError otherwise.
+    STALE_CACHE_LIMIT and raises StaleCacheError otherwise; with no cached copy
+    at all, it raises FetchError.
     """
     cache_meta_path, cache_content_path = _cache_paths(url)
     page_name = WIKIPEDIA_PAGES.get(url, url)
@@ -153,10 +154,10 @@ def fetch_with_cache(url: str) -> tuple[bytes, bool]:
             page_name, f"HTTP {response.status_code}", cached_meta, cache_content_path
         )
 
-    response.raise_for_status()
-    # Not an error status, but not usable either (e.g. a 304 with no cached body)
-    raise requests.HTTPError(
-        f"Unexpected HTTP {response.status_code} for {url}", response=response
+    # An error status, or one that isn't usable without a cached body (a 304)
+    raise FetchError(
+        f"{page_name} returned HTTP {response.status_code} and there is no "
+        "cached copy to fall back to"
     )
 
 

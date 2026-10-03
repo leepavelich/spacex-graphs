@@ -22,7 +22,11 @@ docker compose run --rm graphs
 
 This fetches the Wikipedia pages and saves the graphs and CSV to `outputs/`. A container has no display, so Docker always saves rather than showing the graphs on screen. To add flags, include `--output` too, as in `docker compose run --rm graphs --output -q`. Downloaded pages are kept in a Docker volume, so later runs only re-download pages that changed.
 
-The container runs as a user with ID 1000. On a Linux host where your user ID differs, add `--user "$(id -u):$(id -g)"` so it can write to `outputs/`.
+The container runs as a user with ID 1000. On a Linux host where your user ID differs, run it as your own user so the files it writes in `outputs/` belong to you:
+
+```bash
+docker compose run --rm --user "$(id -u):$(id -g)" graphs
+```
 
 ## Running locally
 

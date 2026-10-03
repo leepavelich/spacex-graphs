@@ -89,10 +89,13 @@ class TestFetchWithCache(unittest.TestCase):
         self.assertEqual(cache.fetch_with_cache(URL), (b"refetched", False))
         self.assertNotIn("If-None-Match", self.get.call_args.kwargs["headers"])
 
-    def test_unexpected_304_without_cache_raises(self):
-        self.get.return_value = _response(304)
-        with self.assertRaises(requests.HTTPError):
-            cache.fetch_with_cache(URL)
+    def test_unusable_response_without_cache_is_a_clear_error(self):
+        for status in (304, 403, 404, 503):
+            with self.subTest(status=status):
+                self.get.return_value = _response(status)
+                with self.assertRaises(cache.FetchError) as ctx:
+                    cache.fetch_with_cache(URL)
+                self.assertIn(f"HTTP {status}", str(ctx.exception))
 
     def test_corrupt_metadata_is_ignored(self):
         self._prime()

@@ -86,8 +86,8 @@ def parse_payload_mass_text(text: str | None) -> int | None:
     - "~16,000 kg (35,000 lb)" (returns 16000)
     - "75,200 lb (34,100 kg)" (the kg figure wins wherever it appears)
     - "2,500 lb" with no kg figure (converted to kg)
-    Footnote markers like "[12]" are removed first, so "Classified[12]"
-    returns 0 rather than 12. Numbers not attached to a unit (years, counts)
+    Footnote markers like "[12]" are removed first, so "Classified[12]" has no
+    mass (None) rather than 12 kg. Numbers not attached to a unit (years, counts)
     are only used when the cell has no unit at all. Returns None when the cell
     holds no mass, such as "Unknown", "Classified", or "—".
     """
