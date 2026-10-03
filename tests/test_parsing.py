@@ -125,6 +125,11 @@ class TestParsePayloadMassText(unittest.TestCase):
         self.assertEqual(parse_payload_mass_text("2,500 lbs"), 1134)
         self.assertEqual(parse_payload_mass_text("16 t (35,000 lb)"), 16000)
 
+    def test_units_must_be_whole_words(self):
+        for text in ("12 transponders", "3 tugs", "4 lbsx", "7 kgs"):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_payload_mass_text(text))
+
     def test_numbers_without_a_unit_are_not_masses(self):
         for text in ("Unknown (22 satellites)", "Group 6-12", "2025", "~16,000"):
             with self.subTest(text=text):
@@ -351,6 +356,20 @@ class TestPageLayouts(unittest.TestCase):
         # The 11-cell Starship row read as a Falcon row lands in the wrong columns
         (falcon_reading,) = parse_launch_page("falcon", html)
         self.assertEqual(falcon_reading.vehicle, "Falcon 9")
+
+
+class TestPageStructure(unittest.TestCase):
+    def test_only_wikitable_tables_are_parsed(self):
+        row = _falcon_row("3 January 2025", "F9", "Sat", "1 kg", "LEO", "Success")
+        html = f"<table>{row}</table>" + _starship_table(row)
+        self.assertEqual(len(parse_launch_page("falcon", html)), 1)
+
+    def test_starship_without_a_block_number_is_plain_starship(self):
+        html = _starship_table(
+            _starship_row("May 27, 2025 23:36", "S35", "X", "1 kg", "LEO", "Success")
+        )
+        (record,) = parse_launch_page("starship", html)
+        self.assertEqual(record.vehicle, "Starship")
 
 
 if __name__ == "__main__":

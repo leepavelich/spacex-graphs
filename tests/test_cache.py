@@ -146,6 +146,16 @@ class TestFetchWithCache(unittest.TestCase):
             self.assertEqual(self._fetch(), (b"<html>cached</html>", False))
         self.assertIn("1d 6h ago", logs.output[0])
 
+    def test_unreadable_timestamp_falls_back_to_file_age(self):
+        self._prime()
+        meta_path, content_path = cache._cache_paths(URL, self._tmp.name)
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump({"verified_at": "not a date"}, f)
+        os.utime(content_path, (0, 0))
+        self.get.side_effect = requests.ConnectionError()
+        with self.assertRaises(cache.StaleCacheError):
+            self._fetch()
+
     def test_cache_without_timestamp_uses_file_age(self):
         self._prime()
         meta_path, content_path = cache._cache_paths(URL, self._tmp.name)
@@ -225,6 +235,13 @@ class TestFetchWithCache(unittest.TestCase):
         self._set_verified_at(now - STALE_CACHE_LIMIT - minute)
         with self.assertRaises(cache.StaleCacheError):
             self._fetch()
+
+
+class TestCachePaths(unittest.TestCase):
+    def test_each_page_gets_its_own_cache_files(self):
+        first = cache._cache_paths(URL, "dir")
+        second = cache._cache_paths(URL + "_(2024)", "dir")
+        self.assertEqual(len({*first, *second}), 4)
 
 
 if __name__ == "__main__":

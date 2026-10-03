@@ -13,7 +13,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot
 
-from spacex_graphs import cache, cli, output, validation
+from spacex_graphs import cache, cli, output, plotting, validation
 from spacex_graphs.config import WIKIPEDIA_PAGES
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.validation import PublishedLaunch
@@ -312,6 +312,62 @@ class TestRun(unittest.TestCase):
             self._run()
         # The hash wasn't recorded, so the next run regenerates
         self.assertTrue(self._changed())
+
+
+class TestRunWiring(unittest.TestCase):
+    def test_charts_get_the_current_year_and_caption(self):
+        records = [
+            LaunchRecord(2026, "LEO", "Sat", 5, datetime.datetime(2026, 9, 30), "F9")
+        ]
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(
+                cli, "load_launch_records", lambda today, **dirs: records
+            ),
+            mock.patch.object(
+                plotting,
+                "plot_payload_mass_to_orbit_by_year",
+                wraps=plotting.plot_payload_mass_to_orbit_by_year,
+            ) as by_year,
+            mock.patch.object(
+                plotting,
+                "plot_cumulative_payload_mass_to_orbit",
+                wraps=plotting.plot_cumulative_payload_mass_to_orbit,
+            ) as cumulative,
+        ):
+            cli.run(True, TODAY, output_dir=tmp, cache_dir=tmp)
+        matplotlib.pyplot.close("all")
+        self.assertEqual(by_year.call_args.kwargs["current_year"], 2026)
+        caption = by_year.call_args.kwargs["caption"]
+        self.assertIn("through 30 September 2026", caption)
+        self.assertEqual(cumulative.call_args.kwargs["caption"], caption)
+
+
+class TestConfigureLogging(unittest.TestCase):
+    def _handlers(self, quiet):
+        with mock.patch("spacex_graphs.cli.logging.basicConfig") as basic:
+            cli._configure_logging(quiet)
+        return basic.call_args.kwargs
+
+    def test_progress_goes_to_stdout_and_problems_to_stderr(self):
+        import logging
+        import sys
+
+        kwargs = self._handlers(quiet=False)
+        self.assertEqual(kwargs["level"], logging.INFO)
+        progress, problems = kwargs["handlers"]
+        self.assertIs(progress.stream, sys.stdout)
+        self.assertIs(problems.stream, sys.stderr)
+        info = logging.LogRecord("x", logging.INFO, "", 0, "m", None, None)
+        warning = logging.LogRecord("x", logging.WARNING, "", 0, "m", None, None)
+        self.assertTrue(progress.filter(info))
+        self.assertFalse(progress.filter(warning))
+        self.assertEqual(problems.level, logging.WARNING)
+
+    def test_quiet_shows_only_warnings_and_errors(self):
+        import logging
+
+        self.assertEqual(self._handlers(quiet=True)["level"], logging.WARNING)
 
 
 if __name__ == "__main__":

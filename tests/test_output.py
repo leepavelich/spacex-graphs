@@ -173,5 +173,25 @@ class TestPublishedLaunches(unittest.TestCase):
             )
 
 
+class TestEscapeFormula(unittest.TestCase):
+    def test_every_formula_prefix_is_escaped(self):
+        for text in ("=1", "+1", "-1", "@A1", "\tx", "\rx"):
+            with self.subTest(text=repr(text)):
+                self.assertEqual(output._escape_formula(text), "'" + text)
+
+    def test_ordinary_text_is_untouched(self):
+        for text in ("Starlink", "SES-8", "1+1", "a=b"):
+            with self.subTest(text=text):
+                self.assertEqual(output._escape_formula(text), text)
+
+    def test_a_missing_csv_counts_as_a_missing_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for name in output.OUTPUT_FILES:
+                open(os.path.join(directory, name), "w").close()
+            self.assertEqual(output.missing_outputs(directory), [])
+            os.remove(os.path.join(directory, output.LAUNCHES_CSV))
+            self.assertEqual(output.missing_outputs(directory), [output.LAUNCHES_CSV])
+
+
 if __name__ == "__main__":
     unittest.main()

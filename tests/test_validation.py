@@ -156,5 +156,19 @@ class TestCheckRecentLaunch(unittest.TestCase):
         self.assertIn("2026-09-02", str(ctx.exception))
 
 
+class TestPolicyValues(unittest.TestCase):
+    def test_thresholds_are_pinned(self):
+        # Changing these changes what the daily job will publish; make it a
+        # deliberate, reviewed change
+        from spacex_graphs import config
+
+        self.assertEqual(config.FIRST_CONTINUOUS_YEAR, 2012)
+        self.assertEqual(config.MAX_DAYS_SINCE_LAUNCH, 30)
+        self.assertEqual(config.STALE_CACHE_LIMIT, datetime.timedelta(days=3))
+        self.assertEqual(config.REQUEST_TIMEOUT, 10)
+        self.assertEqual(config.MIN_CUMULATIVE_YEAR, 2017)
+        self.assertEqual(config.HIGHLIGHT_FROM_YEAR, 2020)
+
+
 if __name__ == "__main__":
     unittest.main()

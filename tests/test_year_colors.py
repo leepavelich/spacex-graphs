@@ -86,6 +86,8 @@ class TestCumulativeGeometry(unittest.TestCase):
             self.assertEqual(line.get_drawstyle(), "steps-post")
         # TODAY is in 2026, a 365-day year, with a little padding either side
         self.assertEqual(ax.get_xlim(), (-14, 372))
+        leap = _cumulative_figure([2024], today=datetime.date(2024, 5, 1)).axes[0]
+        self.assertEqual(leap.get_xlim(), (-14, 373))
         self.assertEqual(
             [label.get_text() for label in ax.get_xticklabels()],
             ["Jan 1", "Mar 1", "May 1", "Jul 1", "Sep 1", "Nov 1"],
