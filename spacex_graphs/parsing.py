@@ -7,6 +7,8 @@ from typing import NamedTuple
 
 from bs4 import BeautifulSoup, Tag
 
+from spacex_graphs.config import TableLayout
+
 
 class LaunchRecord(NamedTuple):
     """A single launch parsed from Wikipedia, as Wikipedia reports it.
@@ -201,12 +203,19 @@ def _parse_starship_row(cols: Sequence[Tag]) -> LaunchRecord | None:
     )
 
 
-def parse_launch_page(url: str, content: bytes | str) -> list[LaunchRecord]:
-    """Parses all launch records from a Wikipedia launch-list page."""
-    parse_row: Callable[[Sequence[Tag]], LaunchRecord | None] = (
-        _parse_starship_row if "Starship" in url else _parse_falcon_row
-    )
+_ROW_PARSERS: dict[TableLayout, Callable[[Sequence[Tag]], LaunchRecord | None]] = {
+    "falcon": _parse_falcon_row,
+    "starship": _parse_starship_row,
+}
 
+
+def parse_launch_page(layout: TableLayout, content: bytes | str) -> list[LaunchRecord]:
+    """Parses all launch records from a Wikipedia launch-list page.
+
+    layout names the page's table layout (config.Page.layout), which picks
+    the row parser.
+    """
+    parse_row = _ROW_PARSERS[layout]
     soup = BeautifulSoup(content, "html.parser")
     records: list[LaunchRecord] = []
     for table in soup.find_all("table", {"class": "wikitable"}):

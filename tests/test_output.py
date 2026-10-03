@@ -5,7 +5,6 @@ import datetime
 import os
 import tempfile
 import unittest
-from unittest import mock
 
 import matplotlib
 
@@ -30,8 +29,7 @@ def _figure():
 
 def _render_svgs(directory):
     figs = (_figure(), _figure())
-    with mock.patch.object(output, "OUTPUT_DIR", directory):
-        output.save_plots(*figs)
+    output.save_plots(*figs, output_dir=directory)
     plt.close("all")
     contents = {}
     for name in sorted(os.listdir(directory)):
@@ -85,8 +83,7 @@ class TestSaveLaunchesCsv(unittest.TestCase):
             ]
         )
         with tempfile.TemporaryDirectory() as directory:
-            with mock.patch.object(output, "OUTPUT_DIR", directory):
-                output.save_launches_csv(df)
+            output.save_launches_csv(df, output_dir=directory)
             with open(os.path.join(directory, "spacex_launches.csv"), newline="") as f:
                 rows = list(csv.DictReader(f))
 
@@ -129,13 +126,12 @@ class TestPublishedLaunchCounts(unittest.TestCase):
                 LaunchRecord(2026, "LEO", "C", 1, datetime.datetime(2026, 1, 1), "F9"),
             ]
         )
-        with (
-            tempfile.TemporaryDirectory() as directory,
-            mock.patch.object(output, "OUTPUT_DIR", directory),
-        ):
-            self.assertEqual(output.published_launch_counts(), {})
-            output.save_launches_csv(df)
-            self.assertEqual(output.published_launch_counts(), {2025: 2, 2026: 1})
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(output.published_launch_counts(directory), {})
+            output.save_launches_csv(df, output_dir=directory)
+            self.assertEqual(
+                output.published_launch_counts(directory), {2025: 2, 2026: 1}
+            )
 
 
 if __name__ == "__main__":

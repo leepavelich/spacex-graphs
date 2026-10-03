@@ -13,7 +13,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from spacex_graphs import cache, output, plotting, transform, validation
-from spacex_graphs.config import CACHE_DIR, OUTPUT_DIR, WIKIPEDIA_PAGES
+from spacex_graphs.config import CACHE_DIR, OUTPUT_DIR, WIKIPEDIA_PAGES, Page
 from spacex_graphs.parsing import LaunchRecord, parse_launch_page
 
 logger = logging.getLogger(__name__)
@@ -34,12 +34,15 @@ DATA_ERRORS = (
 _FILE_ONLY_BACKENDS = {"agg", "cairo", "pdf", "pgf", "ps", "svg", "template"}
 
 
-def _fetch_and_parse(url: str) -> list[LaunchRecord]:
+def _fetch_and_parse(page: Page, cache_dir: str) -> list[LaunchRecord]:
     """Fetches one page (using the HTTP cache) and parses its launch records."""
     # Parsing inside the fetch lets the cache refuse a download with no
     # launches in it, rather than replacing a good cached copy
     records, _ = cache.fetch_with_cache(
-        url, lambda content: parse_launch_page(url, content)
+        page.url,
+        lambda content: parse_launch_page(page.layout, content),
+        cache_dir=cache_dir,
+        name=page.name,
     )
     return records
 
@@ -64,20 +67,30 @@ def code_version() -> str:
     return digest.hexdigest()[:16]
 
 
-def load_launch_records(today: datetime.date) -> list[LaunchRecord]:
+def load_launch_records(
+    today: datetime.date, *, cache_dir: str, output_dir: str
+) -> list[LaunchRecord]:
     """Fetches and parses every Wikipedia page, then checks the result.
 
     Raises one of the validation errors when the launches can't be trusted:
     a page with no launches, a past year with none, or a year with far fewer
     than were last published. Launches listed twice or dated after today are
-    dropped with a warning.
+    dropped with a warning. Pages are cached in cache_dir, and the published
+    CSV in output_dir is the baseline for the launch counts.
     """
     logger.info("Fetching Wikipedia pages:")
     with ThreadPoolExecutor(max_workers=5) as executor:
-        results = list(executor.map(_fetch_and_parse, WIKIPEDIA_PAGES))
+        results = list(
+            executor.map(
+                lambda page: _fetch_and_parse(page, cache_dir), WIKIPEDIA_PAGES
+            )
+        )
 
     validation.check_pages_not_empty(
-        dict(zip(WIKIPEDIA_PAGES.values(), results, strict=True))
+        {
+            page.name: page_records
+            for page, page_records in zip(WIKIPEDIA_PAGES, results, strict=True)
+        }
     )
 
     records, duplicates = validation.drop_duplicate_launches(
@@ -91,23 +104,30 @@ def load_launch_records(today: datetime.date) -> list[LaunchRecord]:
         logger.warning("Dropped %d launches dated after today", future)
 
     validation.check_year_coverage(records, today)
-    validation.check_launch_counts(records, output.published_launch_counts())
+    validation.check_launch_counts(records, output.published_launch_counts(output_dir))
     return records
 
 
-def run(save_output: bool, today: datetime.date | None = None) -> None:
+def run(
+    save_output: bool,
+    today: datetime.date | None = None,
+    *,
+    output_dir: str = OUTPUT_DIR,
+    cache_dir: str = CACHE_DIR,
+) -> None:
     """Generates the graphs, saving them as SVGs or displaying them on screen.
 
-    today defaults to the current UTC date; tests pass a fixed one.
+    today defaults to the current UTC date, and the directories to the
+    config defaults; tests pass their own.
     """
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    os.makedirs(CACHE_DIR, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(cache_dir, exist_ok=True)
 
     # Launch times are UTC, so "today" (where the current year's line ends)
     # is the UTC date too; computed once here so the transforms stay pure
     if today is None:
         today = datetime.datetime.now(datetime.UTC).date()
-    records = load_launch_records(today)
+    records = load_launch_records(today, cache_dir=cache_dir, output_dir=output_dir)
 
     # When saving, skip regeneration if neither the data nor the date changed
     # since the last successful run and every output still exists. Parsing is
@@ -115,11 +135,12 @@ def run(save_output: bool, today: datetime.date | None = None) -> None:
     # see a new day.
     if (
         save_output
-        and not output.missing_outputs()
-        and not cache.has_data_changed(records, today, code_version())
+        and not output.missing_outputs(output_dir)
+        and not cache.has_data_changed(
+            records, today, cache_dir=cache_dir, code_version=code_version()
+        )
     ):
         logger.info("No changes detected in launch data - skipping graph regeneration")
-        cache.write_last_run_date(today)
         return
 
     df = transform.build_dataframe(records)
@@ -131,10 +152,11 @@ def run(save_output: bool, today: datetime.date | None = None) -> None:
     )
 
     if save_output:
-        output.save_plots(fig_by_year, fig_cumulative)
-        output.save_launches_csv(df)
-        cache.save_data_hash(records, today, code_version())
-        cache.write_last_run_date(today)
+        output.save_plots(fig_by_year, fig_cumulative, output_dir=output_dir)
+        output.save_launches_csv(df, output_dir=output_dir)
+        cache.save_data_hash(
+            records, today, cache_dir=cache_dir, code_version=code_version()
+        )
         logger.info("Graphs updated successfully")
     else:
         plt.show()

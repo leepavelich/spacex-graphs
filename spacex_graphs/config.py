@@ -1,7 +1,10 @@
 """Static configuration: data sources, HTTP settings, paths, and orbit categories."""
 
 import datetime
+from typing import Literal, NamedTuple
 
+# Default directories, relative to the current directory; cli.run passes them
+# down, so nothing else reads these
 OUTPUT_DIR = "outputs"
 CACHE_DIR = ".cache"
 
@@ -13,15 +16,32 @@ HEADERS = {
     "User-Agent": "spacex-graphs/1.0 (https://github.com/leepavelich/spacex-graphs)"
 }
 
-# Wikipedia pages listing SpaceX launches, mapped to short display names
-WIKIPEDIA_PAGES = {
-    "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2010%E2%80%932019)": "Falcon 2010-2019",
-    "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2020%E2%80%932022)": "Falcon 2020-2022",
-    "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2023)": "Falcon 2023",
-    "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2024)": "Falcon 2024",
-    "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches": "Falcon current",
-    "https://en.wikipedia.org/wiki/List_of_Starship_launches": "Starship launches",
-}
+# Launch tables come in one of these layouts, each with its own row parser
+TableLayout = Literal["falcon", "starship"]
+
+
+class Page(NamedTuple):
+    """A Wikipedia launch list: a display name, its URL, and its table layout."""
+
+    name: str
+    url: str
+    layout: TableLayout
+
+
+_FALCON_LIST = (
+    "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches"
+)
+_STARSHIP_LIST = "https://en.wikipedia.org/wiki/List_of_Starship_launches"
+
+# The Wikipedia pages listing SpaceX launches
+WIKIPEDIA_PAGES = (
+    Page("Falcon 2010-2019", f"{_FALCON_LIST}_(2010%E2%80%932019)", "falcon"),
+    Page("Falcon 2020-2022", f"{_FALCON_LIST}_(2020%E2%80%932022)", "falcon"),
+    Page("Falcon 2023", f"{_FALCON_LIST}_(2023)", "falcon"),
+    Page("Falcon 2024", f"{_FALCON_LIST}_(2024)", "falcon"),
+    Page("Falcon current", _FALCON_LIST, "falcon"),
+    Page("Starship launches", _STARSHIP_LIST, "starship"),
+)
 
 # When Wikipedia can't be reached, cached pages are used only if they were last
 # confirmed current within this window. Past it the run fails instead, so a

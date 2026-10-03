@@ -10,25 +10,19 @@ from typing import Any, TypeVar, overload
 
 import requests
 
-from spacex_graphs.config import (
-    CACHE_DIR,
-    HEADERS,
-    REQUEST_TIMEOUT,
-    STALE_CACHE_LIMIT,
-    WIKIPEDIA_PAGES,
-)
+from spacex_graphs.config import HEADERS, REQUEST_TIMEOUT, STALE_CACHE_LIMIT
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
 
-def _cache_paths(url: str) -> tuple[str, str]:
+def _cache_paths(url: str, cache_dir: str) -> tuple[str, str]:
     """Returns the (metadata, content) cache file paths for a URL."""
     cache_key = hashlib.md5(url.encode()).hexdigest()
     return (
-        os.path.join(CACHE_DIR, f"{cache_key}.json"),
-        os.path.join(CACHE_DIR, f"{cache_key}.html"),
+        os.path.join(cache_dir, f"{cache_key}.json"),
+        os.path.join(cache_dir, f"{cache_key}.html"),
     )
 
 
@@ -112,15 +106,23 @@ def _unparsed(content: bytes) -> bytes:
 
 
 @overload
-def fetch_with_cache(url: str) -> tuple[bytes, bool]: ...
+def fetch_with_cache(
+    url: str, *, cache_dir: str, name: str | None = None
+) -> tuple[bytes, bool]: ...
 
 
 @overload
-def fetch_with_cache(url: str, parse: Callable[[bytes], T]) -> tuple[T, bool]: ...
+def fetch_with_cache(
+    url: str, parse: Callable[[bytes], T], *, cache_dir: str, name: str | None = None
+) -> tuple[T, bool]: ...
 
 
 def fetch_with_cache(
-    url: str, parse: Callable[[bytes], Any] = _unparsed
+    url: str,
+    parse: Callable[[bytes], Any] = _unparsed,
+    *,
+    cache_dir: str,
+    name: str | None = None,
 ) -> tuple[Any, bool]:
     """Fetches a URL with ETag/Last-Modified caching and parses it.
 
@@ -132,10 +134,11 @@ def fetch_with_cache(
 
     When the fetch fails, returns the parsed cached copy if it was confirmed
     current within STALE_CACHE_LIMIT and raises StaleCacheError otherwise;
-    with no cached copy at all, it raises FetchError.
+    with no cached copy at all, it raises FetchError. Messages call the page
+    name, or the URL if no name is given.
     """
-    cache_meta_path, cache_content_path = _cache_paths(url)
-    page_name = WIKIPEDIA_PAGES.get(url, url)
+    cache_meta_path, cache_content_path = _cache_paths(url, cache_dir)
+    page_name = name or url
 
     has_cached_content = os.path.exists(cache_content_path)
     # Only send validators when the body they describe is on disk; otherwise a
@@ -187,8 +190,8 @@ def fetch_with_cache(
     return result, False
 
 
-def _hash_file_path() -> str:
-    return os.path.join(CACHE_DIR, "data_hash.txt")
+def _hash_file_path(cache_dir: str) -> str:
+    return os.path.join(cache_dir, "data_hash.txt")
 
 
 def compute_data_hash(
@@ -209,14 +212,18 @@ def compute_data_hash(
 
 
 def has_data_changed(
-    records: Iterable[tuple[Any, ...]], today: datetime.date, code_version: str = ""
+    records: Iterable[tuple[Any, ...]],
+    today: datetime.date,
+    *,
+    cache_dir: str,
+    code_version: str = "",
 ) -> bool:
     """Checks if the outputs would differ from the last successful run.
 
     Does not update the stored hash; call save_data_hash once the outputs
     have been written, so a failed run is retried instead of skipped.
     """
-    hash_file = _hash_file_path()
+    hash_file = _hash_file_path(cache_dir)
     if not os.path.exists(hash_file):
         return True
     with open(hash_file, encoding="utf-8") as f:
@@ -225,15 +232,12 @@ def has_data_changed(
 
 
 def save_data_hash(
-    records: Iterable[tuple[Any, ...]], today: datetime.date, code_version: str = ""
+    records: Iterable[tuple[Any, ...]],
+    today: datetime.date,
+    *,
+    cache_dir: str,
+    code_version: str = "",
 ) -> None:
     """Records the data hash after outputs were generated successfully."""
-    with open(_hash_file_path(), "w", encoding="utf-8") as f:
+    with open(_hash_file_path(cache_dir), "w", encoding="utf-8") as f:
         f.write(compute_data_hash(records, today, code_version))
-
-
-def write_last_run_date(today: datetime.date) -> None:
-    """Records the date the graphs were last checked/generated."""
-    date_file = os.path.join(CACHE_DIR, "last_run_date.txt")
-    with open(date_file, "w", encoding="utf-8") as f:
-        f.write(today.isoformat())

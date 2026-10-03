@@ -47,32 +47,38 @@ class TestCodeVersion(unittest.TestCase):
 
 class TestLoadLaunchRecords(unittest.TestCase):
     def _load(self, pages, published=None):
-        """Loads with each page URL mapped to the records it should parse to,
+        """Loads with each page mapped to the records it should parse to,
         checked against the given published counts (none by default)."""
         with (
-            mock.patch.object(cli, "_fetch_and_parse", lambda url: pages[url]),
+            mock.patch.object(
+                cli, "_fetch_and_parse", lambda page, cache_dir: pages[page]
+            ),
             mock.patch.object(
                 output, "published_launch_counts", return_value=published or {}
             ),
         ):
-            return cli.load_launch_records(TODAY)
+            return cli.load_launch_records(
+                TODAY, cache_dir="unused", output_dir="unused"
+            )
 
     @staticmethod
     def _pages(first_page, filler_year=TODAY.year):
         """The first page parses to first_page; every other page parses to
         one distinct launch in filler_year."""
-        urls = list(WIKIPEDIA_PAGES)
-        pages = {url: [_launch(filler_year, 1, i + 1)] for i, url in enumerate(urls)}
-        pages[urls[0]] = first_page
+        pages = {
+            page: [_launch(filler_year, 1, i + 1)]
+            for i, page in enumerate(WIKIPEDIA_PAGES)
+        }
+        pages[WIKIPEDIA_PAGES[0]] = first_page
         return pages
 
     def test_page_with_no_records_is_fatal(self):
         pages = self._pages(EVERY_YEAR)
-        empty_url = list(WIKIPEDIA_PAGES)[-1]
-        pages[empty_url] = []
+        empty_page = WIKIPEDIA_PAGES[-1]
+        pages[empty_page] = []
         with self.assertRaises(validation.EmptyPageError) as ctx:
             self._load(pages)
-        self.assertIn(WIKIPEDIA_PAGES[empty_url], str(ctx.exception))
+        self.assertIn(empty_page.name, str(ctx.exception))
 
     def test_complete_pages_load(self):
         records = self._load(self._pages(EVERY_YEAR))
@@ -93,7 +99,7 @@ class TestLoadLaunchRecords(unittest.TestCase):
 
     def test_launch_listed_on_two_pages_counts_once(self):
         with self.assertLogs(cli.logger, "WARNING") as logs:
-            records = self._load({url: EVERY_YEAR for url in WIKIPEDIA_PAGES})
+            records = self._load({page: EVERY_YEAR for page in WIKIPEDIA_PAGES})
         self.assertEqual(len(records), len(EVERY_YEAR))
         self.assertIn("more than one page", logs.output[0])
 
@@ -172,19 +178,30 @@ class TestRun(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.output_dir = os.path.join(tmp.name, "outputs")
         self.cache_dir = os.path.join(tmp.name, ".cache")
-        for module, name, value in (
-            (cli, "OUTPUT_DIR", self.output_dir),
-            (cli, "CACHE_DIR", self.cache_dir),
-            (cache, "CACHE_DIR", self.cache_dir),
-            (output, "OUTPUT_DIR", self.output_dir),
-        ):
-            self.enterContext(mock.patch.object(module, name, value))
         self.records = list(RECORDS)
         self.enterContext(
-            mock.patch.object(cli, "load_launch_records", lambda today: self.records)
+            mock.patch.object(
+                cli, "load_launch_records", lambda today, **dirs: self.records
+            )
         )
         self.show = self.enterContext(mock.patch("spacex_graphs.cli.plt.show"))
         self.addCleanup(matplotlib.pyplot.close, "all")
+
+    def _run(self, save_output=True):
+        cli.run(
+            save_output=save_output,
+            today=TODAY,
+            output_dir=self.output_dir,
+            cache_dir=self.cache_dir,
+        )
+
+    def _changed(self):
+        return cache.has_data_changed(
+            self.records,
+            TODAY,
+            cache_dir=self.cache_dir,
+            code_version=cli.code_version(),
+        )
 
     def _outputs(self):
         if not os.path.isdir(self.output_dir):
@@ -192,48 +209,44 @@ class TestRun(unittest.TestCase):
         return sorted(os.listdir(self.output_dir))
 
     def test_first_save_writes_all_outputs(self):
-        cli.run(save_output=True, today=TODAY)
+        self._run()
         self.assertEqual(self._outputs(), OUTPUT_FILES)
-        self.assertFalse(
-            cache.has_data_changed(self.records, TODAY, cli.code_version())
-        )
+        self.assertFalse(self._changed())
         self.show.assert_not_called()
 
     def test_unchanged_rerun_skips_regeneration(self):
-        cli.run(save_output=True, today=TODAY)
+        self._run()
         svg = os.path.join(self.output_dir, OUTPUT_FILES[0])
         os.utime(svg, (0, 0))
-        cli.run(save_output=True, today=TODAY)
+        self._run()
         self.assertEqual(os.path.getmtime(svg), 0)
-        with open(os.path.join(self.cache_dir, "last_run_date.txt")) as f:
-            self.assertEqual(f.read(), TODAY.isoformat())
 
     def test_missing_output_regenerates_even_when_unchanged(self):
-        cli.run(save_output=True, today=TODAY)
+        self._run()
         os.remove(os.path.join(self.output_dir, OUTPUT_FILES[0]))
-        cli.run(save_output=True, today=TODAY)
+        self._run()
         self.assertEqual(self._outputs(), OUTPUT_FILES)
 
     def test_new_launch_regenerates(self):
-        cli.run(save_output=True, today=TODAY)
+        self._run()
         svg = os.path.join(self.output_dir, OUTPUT_FILES[0])
         os.utime(svg, (0, 0))
         self.records.append(
             LaunchRecord(2026, "LEO", "New", 1, datetime.datetime(2026, 3, 1), "F9")
         )
-        cli.run(save_output=True, today=TODAY)
+        self._run()
         self.assertGreater(os.path.getmtime(svg), 0)
 
     def test_code_change_regenerates_on_the_same_day(self):
-        cli.run(save_output=True, today=TODAY)
+        self._run()
         svg = os.path.join(self.output_dir, OUTPUT_FILES[0])
         os.utime(svg, (0, 0))
         with mock.patch.object(cli, "code_version", return_value="changed"):
-            cli.run(save_output=True, today=TODAY)
+            self._run()
         self.assertGreater(os.path.getmtime(svg), 0)
 
     def test_display_mode_shows_and_writes_nothing(self):
-        cli.run(save_output=False, today=TODAY)
+        self._run(save_output=False)
         self.show.assert_called_once()
         self.assertEqual(self._outputs(), [])
 
@@ -242,9 +255,9 @@ class TestRun(unittest.TestCase):
             mock.patch.object(output, "save_launches_csv", side_effect=OSError),
             self.assertRaises(OSError),
         ):
-            cli.run(save_output=True, today=TODAY)
+            self._run()
         # The hash wasn't recorded, so the next run regenerates
-        self.assertTrue(cache.has_data_changed(self.records, TODAY, cli.code_version()))
+        self.assertTrue(self._changed())
 
 
 if __name__ == "__main__":
