@@ -119,6 +119,17 @@ class TestParsePayloadMassText(unittest.TestCase):
     def test_kg_figure_wins_over_leading_pounds(self):
         self.assertEqual(parse_payload_mass_text("75,200 lb (34,100 kg)"), 34100)
 
+    def test_tonnes_and_lbs(self):
+        self.assertEqual(parse_payload_mass_text("1.5 t"), 1500)
+        self.assertEqual(parse_payload_mass_text("~100 tonnes"), 100000)
+        self.assertEqual(parse_payload_mass_text("2,500 lbs"), 1134)
+        self.assertEqual(parse_payload_mass_text("16 t (35,000 lb)"), 16000)
+
+    def test_numbers_without_a_unit_are_not_masses(self):
+        for text in ("Unknown (22 satellites)", "Group 6-12", "2025", "~16,000"):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_payload_mass_text(text))
+
     def test_pounds_only_is_converted(self):
         self.assertEqual(parse_payload_mass_text("2,500 lb"), 1134)
 

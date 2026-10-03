@@ -45,6 +45,27 @@ class TestCodeVersion(unittest.TestCase):
             self.assertNotEqual(cli.code_version(), baseline)
 
 
+class TestFetchAndParse(unittest.TestCase):
+    def test_fetches_the_page_url_and_parses_with_its_layout(self):
+        page = WIKIPEDIA_PAGES[-1]
+        with (
+            mock.patch.object(cache, "fetch_with_cache") as fetch,
+            mock.patch.object(
+                cli, "parse_launch_page", return_value=["parsed"]
+            ) as parse,
+        ):
+            fetch.side_effect = lambda url, parse_page, **kwargs: (
+                parse_page(b"html"),
+                False,
+            )
+            self.assertEqual(cli._fetch_and_parse(page, "cache-dir"), ["parsed"])
+        self.assertEqual(fetch.call_args.args[0], page.url)
+        self.assertEqual(
+            fetch.call_args.kwargs, {"cache_dir": "cache-dir", "name": page.name}
+        )
+        parse.assert_called_once_with(page.layout, b"html")
+
+
 class TestLoadLaunchRecords(unittest.TestCase):
     def _load(self, pages, published=None):
         """Loads with each page mapped to the records it should parse to,

@@ -63,5 +63,21 @@ class TestPlotCumulative(unittest.TestCase):
         self.assertEqual(legend, [str(year) for year in range(2020, 2026)])
 
 
+class TestCumulativeGeometry(unittest.TestCase):
+    def tearDown(self):
+        plt.close("all")
+
+    def test_lines_step_and_the_axis_spans_the_current_year(self):
+        ax = _cumulative_figure(range(2023, 2025)).axes[0]
+        for line in ax.lines:
+            self.assertEqual(line.get_drawstyle(), "steps-post")
+        # TODAY is in 2026, a 365-day year, with a little padding either side
+        self.assertEqual(ax.get_xlim(), (-14, 372))
+        self.assertEqual(
+            [label.get_text() for label in ax.get_xticklabels()],
+            ["Jan 1", "Mar 1", "May 1", "Jul 1", "Sep 1", "Nov 1"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

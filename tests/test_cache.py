@@ -214,6 +214,18 @@ class TestFetchWithCache(unittest.TestCase):
             [name for name in os.listdir(self._tmp.name) if name.endswith(".tmp")]
         )
 
+    def test_stale_limit_boundary(self):
+        self._prime()
+        now = datetime.datetime.now(datetime.UTC)
+        self.get.side_effect = requests.ConnectionError()
+        minute = datetime.timedelta(minutes=1)
+        self._set_verified_at(now - STALE_CACHE_LIMIT + minute)
+        with self.assertLogs(cache.logger, "WARNING"):
+            self._fetch()
+        self._set_verified_at(now - STALE_CACHE_LIMIT - minute)
+        with self.assertRaises(cache.StaleCacheError):
+            self._fetch()
+
 
 if __name__ == "__main__":
     unittest.main()
