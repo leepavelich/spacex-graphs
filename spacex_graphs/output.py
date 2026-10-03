@@ -2,6 +2,7 @@
 
 import os
 
+import matplotlib.pyplot as plt
 import pandas as pd
 
 from spacex_graphs import cache
@@ -9,14 +10,25 @@ from spacex_graphs.config import OUTPUT_DIR
 from spacex_graphs.transform import categorize_starlink, clean_orbit_category
 
 
+# matplotlib otherwise embeds a <dc:date> timestamp and random clip-path/glyph
+# IDs, so identical data produced a different SVG (and a noisy commit) every run
+_DETERMINISTIC_SVG_RC = {"svg.hashsalt": "spacex-graphs"}
+_DETERMINISTIC_SVG_METADATA = {"Date": None}
+
+
+def _save_svg(fig, filename):
+    with plt.rc_context(_DETERMINISTIC_SVG_RC):
+        fig.savefig(
+            os.path.join(OUTPUT_DIR, filename),
+            format="svg",
+            metadata=_DETERMINISTIC_SVG_METADATA,
+        )
+
+
 def save_plots(fig_by_year, fig_cumulative):
-    """Saves the plots as SVG files"""
-    fig_by_year.savefig(
-        os.path.join(OUTPUT_DIR, "payload_mass_to_orbit_by_year.svg"), format="svg"
-    )
-    fig_cumulative.savefig(
-        os.path.join(OUTPUT_DIR, "cumulative_payload_mass_to_orbit.svg"), format="svg"
-    )
+    """Saves the plots as SVG files, byte-identical for identical figures."""
+    _save_svg(fig_by_year, "payload_mass_to_orbit_by_year.svg")
+    _save_svg(fig_cumulative, "cumulative_payload_mass_to_orbit.svg")
     cache.write_last_run_date()
 
 
