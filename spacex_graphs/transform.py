@@ -6,22 +6,29 @@ from collections.abc import Sequence
 
 import pandas as pd
 
-from spacex_graphs.config import MIN_CUMULATIVE_YEAR, ORBIT_MAPPING
+from spacex_graphs.config import (
+    LEO_OTHER,
+    LEO_STARLINK,
+    MIN_CUMULATIVE_YEAR,
+    ORBIT_MAPPING,
+    OTHER_ORBIT,
+)
 from spacex_graphs.parsing import LaunchRecord
 
 
 def clean_orbit_category(orbit: str) -> str:
-    """Cleans the orbit category by removing square brackets and mapping to a category.
+    """Maps a raw orbit description to one of config.ORBIT_CATEGORIES.
 
-    Orbits not in ORBIT_MAPPING fall back to a LEO category when they are
-    clearly a low Earth orbit variant (e.g. "Elliptical LEO"), otherwise "Other".
+    Footnote markers are removed first. Orbits not in ORBIT_MAPPING fall back to
+    a LEO category when they are clearly a low Earth orbit variant (e.g.
+    "Elliptical LEO"), and to "Other" otherwise.
     """
     orbit_cleaned = re.sub(r"\[.*?\]", "", orbit).strip()
     if orbit_cleaned in ORBIT_MAPPING:
         return ORBIT_MAPPING[orbit_cleaned]
     if re.search(r"\bLEO\b|low earth orbit", orbit_cleaned, flags=re.IGNORECASE):
-        return "LEO (Starlink)" if "(Starlink)" in orbit_cleaned else "LEO (Other)"
-    return "Other"
+        return LEO_STARLINK if "(Starlink)" in orbit_cleaned else LEO_OTHER
+    return OTHER_ORBIT
 
 
 def categorize_starlink(payload: str, orbit: str) -> str:
@@ -34,19 +41,42 @@ def categorize_starlink(payload: str, orbit: str) -> str:
     return orbit
 
 
+def launch_succeeded(outcome: str) -> bool:
+    """Whether a launch's payload mass counts toward the graphs.
+
+    Wikipedia's outcomes include "Success", "Failure", "Precluded (pre-flight
+    failure)", and, for the 2020 Crew Dragon abort test, "Successful simulated
+    failure", which did deliver its payload. Matching the start of the text
+    keeps "Unsuccessful" or "Partial success" from counting.
+    """
+    return outcome.lower().startswith("success")
+
+
 def build_dataframe(records: Sequence[LaunchRecord]) -> pd.DataFrame:
     """Builds the launch DataFrame with standardized orbit categories.
 
-    "Orbit" holds the category used by the graphs; "RawOrbit" keeps the
-    Wikipedia text for the CSV export.
+    "Orbit" holds the category used by the graphs and "RawOrbit" the
+    Wikipedia text. "ReportedMass" is the mass Wikipedia gives (missing when
+    unknown), and "PayloadMass" is the mass the graphs count: the reported
+    mass for successful launches, and 0 for failures or unknown masses.
     """
     df = pd.DataFrame(
-        records,
-        columns=["Year", "RawOrbit", "Payload", "PayloadMass", "DateTime", "Vehicle"],
+        {
+            "Year": [r.year for r in records],
+            "RawOrbit": [r.orbit for r in records],
+            "Payload": [r.payload for r in records],
+            "ReportedMass": pd.array([r.payload_mass for r in records], dtype="Int64"),
+            "PayloadMass": [
+                (r.payload_mass or 0) if launch_succeeded(r.outcome) else 0
+                for r in records
+            ],
+            "DateTime": pd.to_datetime([r.launch_datetime for r in records]),
+            "Vehicle": [r.vehicle for r in records],
+            "Outcome": [r.outcome for r in records],
+        }
     )
     df["Orbit"] = [
-        clean_orbit_category(categorize_starlink(payload, orbit))
-        for payload, orbit in zip(df["Payload"], df["RawOrbit"], strict=True)
+        clean_orbit_category(categorize_starlink(r.payload, r.orbit)) for r in records
     ]
     return df
 

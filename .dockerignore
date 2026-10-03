@@ -1,8 +1,9 @@
-# Git
+# Only requirements.txt, graphs.py, and spacex_graphs/ are copied into the
+# image; excluding everything else keeps the build context small
+
+# Git and Docker
 .git
 .gitignore
-
-# Docker
 Dockerfile
 docker-compose.yml
 .dockerignore
@@ -10,43 +11,27 @@ docker-compose.yml
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
 *.egg-info/
-.installed.cfg
-*.egg
-
-# Output files
-
-# Virtual Environment
+.venv/
 venv/
-ENV/
 
-# Editor directories and files
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+
+# Project files the image doesn't need
+.cache/
+.claude/
+.github/
+outputs/
+scripts/
+tests/
+AGENTS.md
+CLAUDE.local.md
+
+# Editors
 .idea
 .vscode
 *.swp
-*.swo
-
-# Not needed in the image; keeps the build context small
-.cache/
-.mypy_cache/
-.ruff_cache/
-.claude/
-tests/
-outputs/
-AGENTS.md
-CLAUDE.local.md

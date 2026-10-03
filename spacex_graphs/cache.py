@@ -10,7 +10,13 @@ from typing import Any
 
 import requests
 
-from spacex_graphs.config import CACHE_DIR, HEADERS, REQUEST_TIMEOUT, WIKIPEDIA_PAGES
+from spacex_graphs.config import (
+    CACHE_DIR,
+    HEADERS,
+    REQUEST_TIMEOUT,
+    STALE_CACHE_LIMIT,
+    WIKIPEDIA_PAGES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,26 +30,88 @@ def _cache_paths(url: str) -> tuple[str, str]:
     )
 
 
+class StaleCacheError(RuntimeError):
+    """Raised when a page can't be fetched and its cached copy is too old."""
+
+
+class FetchError(RuntimeError):
+    """Raised when a page can't be fetched and there is no cached copy."""
+
+
+def _now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.UTC)
+
+
+def _read_meta(cache_meta_path: str) -> dict[str, str]:
+    try:
+        with open(cache_meta_path, encoding="utf-8") as f:
+            meta: dict[str, str] = json.load(f)
+            return meta
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_meta(cache_meta_path: str, meta: dict[str, str]) -> None:
+    with open(cache_meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f)
+
+
+def _read_content(cache_content_path: str) -> bytes:
+    with open(cache_content_path, "rb") as f:
+        return f.read()
+
+
+def _verified_at(meta: dict[str, str], cache_content_path: str) -> datetime.datetime:
+    """When the cached copy was last confirmed current by the server.
+
+    Caches written before this was recorded fall back to the file's mtime.
+    """
+    try:
+        return datetime.datetime.fromisoformat(meta["verified_at"])
+    except (KeyError, ValueError):
+        mtime = os.path.getmtime(cache_content_path)
+        return datetime.datetime.fromtimestamp(mtime, datetime.UTC)
+
+
+def _fall_back_to_cache(
+    page_name: str, reason: str, meta: dict[str, str], cache_content_path: str
+) -> tuple[bytes, bool]:
+    """Serves the cached copy after a failed fetch, unless it is too old."""
+    age = _now() - _verified_at(meta, cache_content_path)
+    if age > STALE_CACHE_LIMIT:
+        raise StaleCacheError(
+            f"{page_name} could not be fetched ({reason}) and the cached copy was "
+            f"last confirmed current {age.days} days ago"
+        )
+    logger.warning(
+        "  ! %s (using cached - %s; last confirmed %s ago)",
+        page_name,
+        reason,
+        _format_age(age),
+    )
+    return _read_content(cache_content_path), False
+
+
+def _format_age(age: datetime.timedelta) -> str:
+    hours = int(age.total_seconds() // 3600)
+    return f"{hours // 24}d {hours % 24}h" if hours >= 24 else f"{hours}h"
+
+
 def fetch_with_cache(url: str) -> tuple[bytes, bool]:
     """Fetches a URL with ETag/Last-Modified caching support.
 
     Returns a tuple (content, not_modified) where not_modified is True when
-    the server confirmed the cached copy is still current (HTTP 304).
+    the server confirmed the cached copy is still current (HTTP 304). When the
+    fetch fails, returns the cached copy if it was confirmed current within
+    STALE_CACHE_LIMIT, and raises StaleCacheError otherwise.
     """
     cache_meta_path, cache_content_path = _cache_paths(url)
     page_name = WIKIPEDIA_PAGES.get(url, url)
 
     has_cached_content = os.path.exists(cache_content_path)
-
-    cached_meta: dict[str, str] = {}
     # Only send validators when the body they describe is on disk; otherwise a
     # 304 would leave nothing to return
-    if has_cached_content and os.path.exists(cache_meta_path):
-        try:
-            with open(cache_meta_path, encoding="utf-8") as f:
-                cached_meta = json.load(f)
-        except (OSError, ValueError):
-            cached_meta = {}
+    cached_meta = _read_meta(cache_meta_path) if has_cached_content else {}
 
     request_headers = HEADERS.copy()
     if "etag" in cached_meta:
@@ -55,38 +123,35 @@ def fetch_with_cache(url: str) -> tuple[bytes, bool]:
         response = requests.get(url, headers=request_headers, timeout=REQUEST_TIMEOUT)
     except requests.RequestException as error:
         if not has_cached_content:
-            raise
-        logger.warning("  ! %s (using cached - %s)", page_name, type(error).__name__)
-        with open(cache_content_path, "rb") as f:
-            return f.read(), False
+            raise FetchError(
+                f"{page_name} could not be fetched ({type(error).__name__}) and "
+                "there is no cached copy; check the network connection"
+            ) from error
+        return _fall_back_to_cache(
+            page_name, type(error).__name__, cached_meta, cache_content_path
+        )
 
     if response.status_code == 304 and has_cached_content:
         logger.info("  ✓ %s (cached)", page_name)
-        with open(cache_content_path, "rb") as f:
-            return f.read(), True
+        _write_meta(cache_meta_path, {**cached_meta, "verified_at": _now().isoformat()})
+        return _read_content(cache_content_path), True
 
     if response.status_code == 200:
         logger.info("  ↓ %s (downloaded)", page_name)
         with open(cache_content_path, "wb") as f:
             f.write(response.content)
-
-        meta = {"url": url}
+        meta = {"url": url, "verified_at": _now().isoformat()}
         if "ETag" in response.headers:
             meta["etag"] = response.headers["ETag"]
         if "Last-Modified" in response.headers:
             meta["last-modified"] = response.headers["Last-Modified"]
-        with open(cache_meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f)
-
+        _write_meta(cache_meta_path, meta)
         return response.content, False
 
-    # Fallback to cached content if the server returned an error status
     if has_cached_content:
-        logger.warning(
-            "  ! %s (using cached - HTTP %s)", page_name, response.status_code
+        return _fall_back_to_cache(
+            page_name, f"HTTP {response.status_code}", cached_meta, cache_content_path
         )
-        with open(cache_content_path, "rb") as f:
-            return f.read(), False
 
     response.raise_for_status()
     # Not an error status, but not usable either (e.g. a 304 with no cached body)
@@ -106,7 +171,9 @@ def compute_data_hash(records: Iterable[tuple[Any, ...]], today: datetime.date) 
     extends to today, so the outputs legitimately change once per day even
     when no launch data does.
     """
-    data_str = json.dumps(sorted(records), sort_keys=True, default=str)
+    # Sort the serialized records: records themselves can't be ordered once a
+    # field may be None
+    data_str = json.dumps(sorted(json.dumps(r, default=str) for r in records))
     combined = f"{today.isoformat()}:{data_str}"
     return hashlib.sha256(combined.encode()).hexdigest()
 

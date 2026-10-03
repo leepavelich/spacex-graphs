@@ -38,3 +38,27 @@ jobs:
 
       - name: Run Tests
         run: python -m unittest discover -s tests -v
+
+      - name: Check Lock Files Match Their Sources
+        # Fails when requirements*.txt no longer match requirements*.in, for
+        # example after a dependency update that changed only one of them
+        run: |
+          scripts/update-locks.sh
+          git diff --exit-code -- requirements.txt requirements-dev.txt
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build Image
+        run: docker build --tag spacex-graphs .
+
+      - name: Smoke Test
+        # Confirms the installed dependencies import and the CLI starts; the
+        # real run needs network access to Wikipedia, which tests don't use
+        run: docker run --rm spacex-graphs --help
+
