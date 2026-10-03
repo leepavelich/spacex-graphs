@@ -35,7 +35,16 @@ class MissingYearsError(RuntimeError):
 
 # Errors that mean the data can't be trusted: the run fails rather than
 # publishing graphs built from it
-DATA_ERRORS = (EmptyPageError, MissingYearsError, cache.StaleCacheError)
+DATA_ERRORS = (
+    EmptyPageError,
+    MissingYearsError,
+    cache.FetchError,
+    cache.StaleCacheError,
+)
+
+# matplotlib backends that render to files only; with one of these, showing
+# the graphs on screen would silently do nothing
+_FILE_ONLY_BACKENDS = {"agg", "cairo", "pdf", "pgf", "ps", "svg", "template"}
 
 
 def _fetch_and_parse(url: str) -> list[LaunchRecord]:
@@ -137,23 +146,48 @@ def run(save_output: bool, today: datetime.date | None = None) -> None:
         plt.show()
 
 
+def _configure_logging(quiet: bool) -> None:
+    """Sends progress to stdout and warnings and errors to stderr."""
+    progress = logging.StreamHandler(sys.stdout)
+    progress.addFilter(lambda record: record.levelno < logging.WARNING)
+    problems = logging.StreamHandler(sys.stderr)
+    problems.setLevel(logging.WARNING)
+    logging.basicConfig(
+        level=logging.WARNING if quiet else logging.INFO,
+        format="%(message)s",
+        handlers=[progress, problems],
+    )
+
+
 def main() -> None:
     """Parses command-line arguments, configures logging, and runs."""
     parser = argparse.ArgumentParser(
-        description="Generate and optionally output plots as SVG."
+        description=(
+            "Fetch SpaceX launch lists from Wikipedia and graph the payload "
+            "mass launched each year. Without --output the graphs are shown "
+            "on screen; with it they are saved, with a CSV of every launch."
+        ),
+        epilog=(
+            f"Files are written to {OUTPUT_DIR}/ and downloaded pages cached in "
+            f"{CACHE_DIR}/, both relative to the current directory. With --output, "
+            "nothing is regenerated when neither the launch data nor the date "
+            "has changed since the last successful run."
+        ),
     )
     parser.add_argument(
-        "--output", action="store_true", help="Output the plots as SVG files"
+        "--output",
+        action="store_true",
+        help=f"save the graphs as SVG files and the launches as CSV in {OUTPUT_DIR}/",
     )
     parser.add_argument(
-        "-q", "--quiet", action="store_true", help="Only print warnings and errors"
+        "-q", "--quiet", action="store_true", help="only print warnings and errors"
     )
     args = parser.parse_args()
-    logging.basicConfig(
-        level=logging.WARNING if args.quiet else logging.INFO,
-        format="%(message)s",
-        stream=sys.stdout,
-    )
+    if not args.output and plt.get_backend().lower() in _FILE_ONLY_BACKENDS:
+        parser.error(
+            "there is no display to show the graphs on; pass --output to save them"
+        )
+    _configure_logging(args.quiet)
     try:
         run(args.output)
     except DATA_ERRORS as error:

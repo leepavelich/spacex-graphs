@@ -99,6 +99,7 @@ class TestLoadLaunchRecords(unittest.TestCase):
     def test_main_exits_nonzero_on_every_data_error(self):
         for error in (
             cli.MissingYearsError("no launches found for 2025"),
+            cache.FetchError("Falcon current could not be fetched"),
             cache.StaleCacheError("Falcon current could not be fetched"),
         ):
             with (
@@ -111,6 +112,18 @@ class TestLoadLaunchRecords(unittest.TestCase):
             ):
                 cli.main()
             self.assertEqual(ctx.exception.code, 1)
+
+    def test_display_without_a_display_is_a_usage_error(self):
+        # Tests run with the file-only Agg backend, like a container or CI
+        with (
+            mock.patch.object(cli, "run") as run,
+            mock.patch("sys.argv", ["graphs.py", "-q"]),
+            mock.patch("sys.stderr"),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            cli.main()
+        self.assertEqual(ctx.exception.code, 2)
+        run.assert_not_called()
 
 
 RECORDS = [

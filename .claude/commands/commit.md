@@ -21,7 +21,7 @@ Follow these steps:
      - `chore`: Maintenance tasks, dependency updates, etc.
      - `ci`: CI/CD configuration changes
      - `build`: Build system or dependency changes
-   - **Scope**: Identify what part of the codebase is affected (e.g., `api`, `ui`, `graphs`, `docker`, `workflow`, etc.). Scope should be concise and relevant. Omit if changes span multiple areas.
+   - **Scope**: Identify what part of the codebase is affected (in this repo, for example `parsing`, `cache`, `plotting`, `cli`, `outputs`, or `deps`). Scope should be concise and relevant. Omit if changes span multiple areas.
    - **Description**: Write a clear, concise description in imperative mood (e.g., "add feature" not "added feature")
 
 5. Present the suggested commit message in this format:

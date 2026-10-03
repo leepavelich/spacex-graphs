@@ -34,6 +34,10 @@ class StaleCacheError(RuntimeError):
     """Raised when a page can't be fetched and its cached copy is too old."""
 
 
+class FetchError(RuntimeError):
+    """Raised when a page can't be fetched and there is no cached copy."""
+
+
 def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC)
 
@@ -119,7 +123,10 @@ def fetch_with_cache(url: str) -> tuple[bytes, bool]:
         response = requests.get(url, headers=request_headers, timeout=REQUEST_TIMEOUT)
     except requests.RequestException as error:
         if not has_cached_content:
-            raise
+            raise FetchError(
+                f"{page_name} could not be fetched ({type(error).__name__}) and "
+                "there is no cached copy; check the network connection"
+            ) from error
         return _fall_back_to_cache(
             page_name, type(error).__name__, cached_meta, cache_content_path
         )

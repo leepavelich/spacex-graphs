@@ -67,10 +67,11 @@ class TestFetchWithCache(unittest.TestCase):
                 )
             self.assertIn(type(error).__name__, logs.output[0])
 
-    def test_network_error_without_cache_raises(self):
+    def test_network_error_without_cache_is_a_clear_error(self):
         self.get.side_effect = requests.ConnectionError()
-        with self.assertRaises(requests.ConnectionError):
+        with self.assertRaises(cache.FetchError) as ctx:
             cache.fetch_with_cache(URL)
+        self.assertIn("no cached copy", str(ctx.exception))
 
     def test_server_error_falls_back_to_cache(self):
         self._prime()
