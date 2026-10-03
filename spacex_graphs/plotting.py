@@ -87,7 +87,9 @@ def plot_payload_mass_to_orbit_by_year(
     labelled "YTD", so a partial year doesn't read as a decline.
     """
     fig, ax = create_figure(
-        "Payload Mass Launched by Year and Destination", "Year", "Payload Mass (kg)"
+        "SpaceX Payload Mass Launched by Year and Destination",
+        "Year",
+        "Payload Mass (kg)",
     )
     unknown = set(payload_mass_by_year_orbit[Col.ORBIT]) - set(ORBIT_COLORS)
     if unknown:
@@ -129,9 +131,15 @@ def plot_payload_mass_to_orbit_by_year(
         [
             f"{year} YTD" if year == current_year else str(year)
             for year in pivot_df.index
-        ]
+        ],
+        # pandas draws bar labels upright; match the 45° of create_figure
+        rotation=45,
+        ha="right",
+        rotation_mode="anchor",
     )
-    ax.legend(title="Destination")
+    # List categories top to bottom in the order they're stacked on the bars
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles[::-1], labels[::-1], title="Destination")
     ax.set_xlabel("")
     _finish(fig, caption)
     return fig
@@ -145,7 +153,7 @@ def plot_cumulative_payload_mass_to_orbit(
     Expects the frame from transform.build_cumulative_frame.
     """
     fig, ax = create_figure(
-        "Cumulative Payload Mass Launched by Year",
+        "SpaceX Cumulative Payload Mass Launched by Year",
         "",
         "Cumulative Payload Mass (kg)",
     )
@@ -181,7 +189,9 @@ def plot_cumulative_payload_mass_to_orbit(
             **style,
         )
 
-    ax.legend(title="Year", loc="upper left")
+    # Newest year first, matching the lines' order from top to bottom
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles[::-1], labels[::-1], title="Year", loc="upper left")
 
     # Set the x-axis ticks to the first of every other month
     months_to_label = [datetime.datetime(2020, month, 1) for month in range(1, 13, 2)]
