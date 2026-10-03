@@ -343,6 +343,33 @@ class TestRunWiring(unittest.TestCase):
         self.assertEqual(cumulative.call_args.kwargs["caption"], caption)
 
 
+class TestJobSummary(unittest.TestCase):
+    def test_run_summarizes_into_the_github_step_summary(self):
+        records = [
+            LaunchRecord(2026, "LEO", "Sat", 5, datetime.datetime(2026, 9, 30), "F9")
+        ]
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(
+                cli, "load_launch_records", lambda today, **dirs: records
+            ),
+        ):
+            summary = os.path.join(tmp, "summary.md")
+            with mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": summary}):
+                cli.run(True, TODAY, output_dir=tmp, cache_dir=tmp)
+                cli.run(True, TODAY, output_dir=tmp, cache_dir=tmp)
+            matplotlib.pyplot.close("all")
+            with open(summary, encoding="utf-8") as f:
+                text = f.read()
+        self.assertIn("Parsed 1 launches; the latest is from 2026-09-30.", text)
+        self.assertIn("Regenerated the graphs and CSV.", text)
+        self.assertIn("Nothing changed since the last run", text)
+
+    def test_no_summary_outside_github_actions(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            cli._summarize("ignored")  # must not raise or write anywhere
+
+
 class TestConfigureLogging(unittest.TestCase):
     def _handlers(self, quiet):
         with mock.patch("spacex_graphs.cli.logging.basicConfig") as basic:
@@ -363,6 +390,18 @@ class TestConfigureLogging(unittest.TestCase):
         self.assertTrue(progress.filter(info))
         self.assertFalse(progress.filter(warning))
         self.assertEqual(problems.level, logging.WARNING)
+
+    def test_problems_become_annotations_in_github_actions(self):
+        import logging
+
+        with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}):
+            _, problems = self._handlers(quiet=False)["handlers"]
+        warning = logging.LogRecord(
+            "x", logging.WARNING, "", 0, "  ! cached", None, None
+        )
+        error = logging.LogRecord("x", logging.ERROR, "", 0, "ERROR: bad", None, None)
+        self.assertEqual(problems.format(warning), "::warning::! cached")
+        self.assertEqual(problems.format(error), "::error::ERROR: bad")
 
     def test_quiet_shows_only_warnings_and_errors(self):
         import logging

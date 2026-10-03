@@ -8,9 +8,15 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request supersedes the running checks
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,6 +45,11 @@ jobs:
       - name: Run Tests
         run: python -m unittest discover -s tests -v
 
+      - name: Audit Dependencies for Known Vulnerabilities
+        run: |
+          pip-audit --progress-spinner off --disable-pip --require-hashes -r requirements.txt
+          pip-audit --progress-spinner off --disable-pip --require-hashes -r requirements-dev.txt
+
       - name: Check Lock Files Match Their Sources
         # Fails when requirements*.txt no longer match requirements*.in, for
         # example after a dependency update that changed only one of them
@@ -48,6 +59,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
