@@ -12,25 +12,34 @@ from matplotlib.ticker import FuncFormatter
 
 from spacex_graphs.config import HIGHLIGHT_FROM_YEAR, ORBIT_CATEGORIES
 
-# Colors for each orbit category, in config.ORBIT_CATEGORIES (legend) order
+# Colors for each orbit category, in config.ORBIT_CATEGORIES (legend) order.
+# Each orbit family gets one hue, taken in the colorblind-validated palette
+# order so stacked neighbors stay distinguishable; Starlink and other payloads
+# in the same orbit share the hue and are told apart by STARLINK_HATCH.
+# "Other" is a neutral grey rather than a ninth hue.
+_BLUE, _ORANGE, _AQUA, _YELLOW = "#2a78d6", "#eb6834", "#1baf7a", "#eda100"
+_MAGENTA, _GREEN, _VIOLET, _NEUTRAL = "#e87ba4", "#008300", "#4a3aa7", "#898781"
 ORBIT_COLORS = dict(
     zip(
         ORBIT_CATEGORIES,
         [
-            "chocolate",
-            "coral",
-            "darkgoldenrod",
-            "orange",
-            "orchid",
-            "yellowgreen",
-            "gold",
-            "wheat",
-            "lightblue",
-            "lightgray",
+            _BLUE,  # LEO (Starlink)
+            _BLUE,  # LEO (Other)
+            _ORANGE,  # SSO (Starlink)
+            _ORANGE,  # SSO (Other)
+            _AQUA,  # MEO
+            _YELLOW,  # GTO/GEO
+            _MAGENTA,  # BLT
+            _GREEN,  # Heliocentric
+            _VIOLET,  # Transatmospheric
+            _NEUTRAL,  # Other
         ],
         strict=True,
     )
 )
+STARLINK_HATCH = "////"
+# White edges leave a thin gap between stacked segments and draw the hatching
+_SEGMENT_EDGE = "white"
 
 # Most recent years get the first colors. This eight-hue order is validated
 # for colorblind-safe separation between adjacent slots. Years before
@@ -94,8 +103,14 @@ def plot_payload_mass_to_orbit_by_year(
         kind="bar",
         stacked=True,
         color=[ORBIT_COLORS[col] for col in ordered_columns],
+        edgecolor=_SEGMENT_EDGE,
+        linewidth=0.8,
         ax=ax,
     )
+    for container in ax.containers:
+        if "(Starlink)" in str(container.get_label()):
+            for segment in container:
+                segment.set_hatch(STARLINK_HATCH)
 
     # Label each bar with the year's total, a few points above the bar so the
     # gap looks the same whatever the axis scale

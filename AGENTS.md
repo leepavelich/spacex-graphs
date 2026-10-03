@@ -14,6 +14,7 @@ Guidance for coding agents working in this repository. It covers only what the c
 - `config.ORBIT_CATEGORIES` is the one list of orbit categories. A new `ORBIT_MAPPING` value must be in it and get a color in `plotting.py`; the tests check both, and the bar chart refuses a category it can't color rather than dropping its mass.
 - Records keep what Wikipedia reports: the outcome text, and the mass or `None` when there isn't one. Whether a launch's mass counts in the graphs is decided only by `transform.launch_succeeded`, so keep that policy out of the parsers.
 - Data that can't be trusted raises one of the errors in `cli.DATA_ERRORS`, which exit with code 1 and a one-line message. Add new data-validity failures there rather than logging a warning, so the daily job goes red instead of publishing.
+- In the bar chart, each orbit family has one hue and Starlink segments are hatched within it, because ten categories won't fit the eight colorblind-safe hues. Keep new hues within the validated palette order in `plotting.py`.
 - In the cumulative chart, the current year is red and years before `HIGHLIGHT_FROM_YEAR` (2020) are grey on purpose: their payload mass is tiny next to recent years.
 - Chart titles say "launched", not "to orbit", because the totals include suborbital (Transatmospheric) payloads.
 

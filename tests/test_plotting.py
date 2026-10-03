@@ -8,10 +8,12 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.plotting import (
     ORBIT_COLORS,
+    STARLINK_HATCH,
     plot_payload_mass_to_orbit_by_year,
 )
 from spacex_graphs.transform import (
@@ -82,6 +84,28 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
 
         totals = [text.get_text() for text in ax.texts]
         self.assertEqual(totals, ["1,300", "2,000"])
+
+    def test_starlink_segments_are_hatched_and_others_solid(self):
+        df = build_dataframe(
+            [
+                _record(2024, "LEO", "Starlink A", 1000),
+                _record(2024, "LEO", "Transporter-9", 500),
+            ]
+        )
+        ax = plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit(df)).axes[0]
+        hatches = {str(c.get_label()): c[0].get_hatch() for c in ax.containers}
+        self.assertEqual(hatches["LEO (Starlink)"], STARLINK_HATCH)
+        self.assertIsNone(hatches["LEO (Other)"])
+        legend = ax.get_legend()
+        assert legend is not None
+        legend_hatches = {
+            text.get_text(): handle.get_hatch()
+            for text, handle in zip(
+                legend.get_texts(), legend.legend_handles, strict=True
+            )
+            if isinstance(handle, Patch)
+        }
+        self.assertEqual(legend_hatches["SSO (Starlink)"], STARLINK_HATCH)
 
 
 if __name__ == "__main__":
