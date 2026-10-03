@@ -4,6 +4,8 @@ import datetime
 import unittest
 
 from spacex_graphs.parsing import (
+    LaunchRecord,
+    drop_duplicate_launches,
     parse_launch_datetime,
     parse_launch_page,
     parse_payload_mass_text,
@@ -252,6 +254,21 @@ class TestParseFalconPage(unittest.TestCase):
             _falcon_row("1 March 2026", "F9", "Good", "2 kg", "LEO", "Success"),
         )
         self.assertEqual([r.payload for r in records], ["Good"])
+
+
+class TestDropDuplicateLaunches(unittest.TestCase):
+    def test_same_time_and_vehicle_is_one_launch(self):
+        when = datetime.datetime(2025, 1, 6, 20, 43)
+        first = LaunchRecord(2025, "LEO", "Starlink 6-71[12]", 1, when, "Falcon 9")
+        relisted = LaunchRecord(2025, "LEO", "Starlink 6-71[48]", 1, when, "Falcon 9")
+        unique, dropped = drop_duplicate_launches([first, relisted])
+        self.assertEqual((unique, dropped), ([first], 1))
+
+    def test_different_vehicles_at_the_same_time_are_kept(self):
+        when = datetime.datetime(2025, 1, 6, 20, 43)
+        falcon = LaunchRecord(2025, "LEO", "A", 1, when, "Falcon 9")
+        starship = LaunchRecord(2025, "LEO", "B", 1, when, "Block 2 Starship")
+        self.assertEqual(drop_duplicate_launches([falcon, starship])[1], 0)
 
 
 if __name__ == "__main__":

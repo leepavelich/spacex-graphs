@@ -1,5 +1,7 @@
 """Tests for the HTTP cache, with requests mocked out."""
 
+import datetime
+import json
 import os
 import tempfile
 import unittest
@@ -8,6 +10,7 @@ from unittest import mock
 import requests
 
 from spacex_graphs import cache
+from spacex_graphs.config import STALE_CACHE_LIMIT
 
 URL = "https://en.wikipedia.org/wiki/List_of_Starship_launches"
 
@@ -96,6 +99,59 @@ class TestFetchWithCache(unittest.TestCase):
             f.write("{not json")
         self.get.return_value = _response(200, b"fresh")
         self.assertEqual(cache.fetch_with_cache(URL), (b"fresh", False))
+
+    def _set_verified_at(self, when):
+        meta_path = cache._cache_paths(URL)[0]
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["verified_at"] = when.isoformat()
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f)
+
+    def test_fetches_record_when_the_copy_was_confirmed_current(self):
+        self._prime()
+        self.get.return_value = _response(304)
+        cache.fetch_with_cache(URL)
+        with open(cache._cache_paths(URL)[0], encoding="utf-8") as f:
+            verified_at = datetime.datetime.fromisoformat(json.load(f)["verified_at"])
+        age = datetime.datetime.now(datetime.UTC) - verified_at
+        self.assertLess(age, datetime.timedelta(minutes=1))
+
+    def test_stale_cache_is_an_error_not_a_fallback(self):
+        self._prime()
+        too_old = datetime.datetime.now(datetime.UTC) - STALE_CACHE_LIMIT
+        self._set_verified_at(too_old - datetime.timedelta(hours=1))
+        for failure in (requests.ConnectionError(), _response(403)):
+            with self.subTest(failure=failure):
+                if isinstance(failure, Exception):
+                    self.get.side_effect = failure
+                else:
+                    self.get.side_effect = None
+                    self.get.return_value = failure
+                with self.assertRaises(cache.StaleCacheError) as ctx:
+                    cache.fetch_with_cache(URL)
+                self.assertIn("Starship launches", str(ctx.exception))
+
+    def test_recent_cache_still_falls_back(self):
+        self._prime()
+        recent = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=30)
+        self._set_verified_at(recent)
+        self.get.side_effect = requests.Timeout()
+        with self.assertLogs(cache.logger, "WARNING") as logs:
+            self.assertEqual(
+                cache.fetch_with_cache(URL), (b"<html>cached</html>", False)
+            )
+        self.assertIn("1d 6h ago", logs.output[0])
+
+    def test_cache_without_timestamp_uses_file_age(self):
+        self._prime()
+        meta_path, content_path = cache._cache_paths(URL)
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump({"etag": '"v1"'}, f)
+        os.utime(content_path, (0, 0))
+        self.get.side_effect = requests.ConnectionError()
+        with self.assertRaises(cache.StaleCacheError):
+            cache.fetch_with_cache(URL)
 
 
 if __name__ == "__main__":

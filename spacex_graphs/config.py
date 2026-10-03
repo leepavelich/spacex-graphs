@@ -1,5 +1,7 @@
 """Static configuration: data sources, HTTP settings, paths, and orbit categories."""
 
+import datetime
+
 OUTPUT_DIR = "outputs"
 CACHE_DIR = ".cache"
 
@@ -20,6 +22,16 @@ WIKIPEDIA_PAGES = {
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches": "Falcon current",
     "https://en.wikipedia.org/wiki/List_of_Starship_launches": "Starship launches",
 }
+
+# When Wikipedia can't be reached, cached pages are used only if they were last
+# confirmed current within this window. Past it the run fails instead, so a
+# blocked or broken fetch can't keep publishing frozen data as if it were new.
+STALE_CACHE_LIMIT = datetime.timedelta(days=3)
+
+# SpaceX has launched every year since 2012 (2011 had no launches). A past year
+# with no launches means a page is missing from WIKIPEDIA_PAGES, most likely
+# because Wikipedia split last year out of the current list into its own page.
+FIRST_CONTINUOUS_YEAR = 2012
 
 # The cumulative graph only shows years from this one onwards
 MIN_CUMULATIVE_YEAR = 2017
