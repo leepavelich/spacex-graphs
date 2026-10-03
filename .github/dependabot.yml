@@ -14,3 +14,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # One PR for all pip bumps: pandas and matplotlib share a numpy ABI
+    # constraint, so bumping one alone can break the other at import time
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
