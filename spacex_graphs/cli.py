@@ -81,6 +81,7 @@ def run(save_output):
     if save_output:
         output.save_plots(fig_by_year, fig_cumulative)
         output.save_launches_csv(records)
+        cache.save_data_hash(records)
         print("Graphs updated successfully")
     else:
         plt.show()

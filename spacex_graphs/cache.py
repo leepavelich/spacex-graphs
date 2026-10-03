@@ -109,19 +109,23 @@ def compute_data_hash(records):
 
 
 def has_data_changed(records):
-    """Checks if data has changed since the last run, updating the stored hash."""
+    """Checks if data has changed since the last successful run.
+
+    Does not update the stored hash; call save_data_hash once the outputs
+    have been written, so a failed run is retried instead of skipped.
+    """
     hash_file = _hash_file_path()
-    new_hash = compute_data_hash(records)
+    if not os.path.exists(hash_file):
+        return True
+    with open(hash_file, "r", encoding="utf-8") as f:
+        old_hash = f.read().strip()
+    return old_hash != compute_data_hash(records)
 
-    if os.path.exists(hash_file):
-        with open(hash_file, "r", encoding="utf-8") as f:
-            old_hash = f.read().strip()
-        if old_hash == new_hash:
-            return False
 
-    with open(hash_file, "w", encoding="utf-8") as f:
-        f.write(new_hash)
-    return True
+def save_data_hash(records):
+    """Records the data hash after outputs were generated successfully."""
+    with open(_hash_file_path(), "w", encoding="utf-8") as f:
+        f.write(compute_data_hash(records))
 
 
 def write_last_run_date():
