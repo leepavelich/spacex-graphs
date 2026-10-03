@@ -43,7 +43,8 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
         legend = ax.get_legend()
         assert legend is not None
         legend_labels = [t.get_text() for t in legend.get_texts()]
-        self.assertEqual(legend_labels, list(ORBIT_COLORS))
+        # Top to bottom in the order the segments are stacked
+        self.assertEqual(legend_labels, list(ORBIT_COLORS)[::-1])
 
     def test_category_without_a_color_is_an_error_not_dropped(self):
         frame = payload_mass_by_year_orbit(
@@ -93,6 +94,12 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
         labels = [label.get_text() for label in fig.axes[0].get_xticklabels()]
         self.assertEqual(labels, ["2025", "2026 YTD"])
         self.assertEqual([text.get_text() for text in fig.texts], ["Source: test"])
+
+    def test_titles_name_spacex_and_year_labels_are_angled(self):
+        df = build_dataframe([_record(2025, "LEO", "Starlink A", 1000)])
+        ax = plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit(df)).axes[0]
+        self.assertTrue(ax.get_title().startswith("SpaceX "))
+        self.assertEqual(ax.get_xticklabels()[0].get_rotation(), 45)
 
 
 if __name__ == "__main__":

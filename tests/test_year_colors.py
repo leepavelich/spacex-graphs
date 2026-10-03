@@ -44,7 +44,8 @@ class TestPlotCumulative(unittest.TestCase):
         recent = [str(year) for year in range(2026, 2019, -1)]
         self.assertEqual([colors[year] for year in recent], YEAR_COLORS[:7])
         legend = [text.get_text() for text in ax.get_legend().get_texts()]
-        expected = ["2017–2019"] + [str(year) for year in range(2020, 2027)]
+        # Newest first, with the grey group last
+        expected = [str(year) for year in range(2026, 2019, -1)] + ["2017–2019"]
         self.assertEqual(legend, expected)
         older = [line for line in ax.lines if line.get_color() == OLDER_YEARS_COLOR]
         self.assertEqual(len(older), 3)
@@ -62,7 +63,7 @@ class TestPlotCumulative(unittest.TestCase):
     def test_no_folding_when_all_years_are_highlighted(self):
         ax = _cumulative_figure(range(2020, 2026)).axes[0]
         legend = [text.get_text() for text in ax.get_legend().get_texts()]
-        self.assertEqual(legend, [str(year) for year in range(2020, 2026)])
+        self.assertEqual(legend, [str(year) for year in range(2025, 2019, -1)])
 
     def test_current_year_keeps_red_before_its_first_launch(self):
         # Early January: no launches yet this year, so last year must not
