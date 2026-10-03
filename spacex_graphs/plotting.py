@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 from spacex_graphs.config import HIGHLIGHT_FROM_YEAR
-from spacex_graphs.transform import add_end_of_period_entries
 
 # Colors for each orbit category, in legend order
 ORBIT_COLORS = {
@@ -97,16 +96,17 @@ def plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit):
     return fig
 
 
-def plot_cumulative_payload_mass_to_orbit(df_filtered):
-    """Plots cumulative launched payload mass by year as line charts."""
+def plot_cumulative_payload_mass_to_orbit(cumulative, today):
+    """Plots cumulative launched payload mass by year as line charts.
+
+    Expects the frame from transform.build_cumulative_frame.
+    """
     fig, ax = create_figure(
         "Cumulative Payload Mass Launched by Year",
         "",
         "Cumulative Payload Mass (kg)",
     )
-    df_extended = add_end_of_period_entries(df_filtered)
-
-    sorted_years = sorted(df_extended["Year"].unique(), reverse=True)
+    sorted_years = sorted(cumulative["Year"].unique(), reverse=True)
     highlighted_years = [y for y in sorted_years if y >= HIGHLIGHT_FROM_YEAR]
     year_color_map = dict(zip(highlighted_years, YEAR_COLORS))
     older_years = [y for y in sorted_years if y not in year_color_map]
@@ -115,11 +115,7 @@ def plot_cumulative_payload_mass_to_orbit(df_filtered):
     elif older_years:
         older_label = f"{min(older_years)}–{max(older_years)}"
 
-    for year, group_data in df_extended.groupby("Year"):
-        group_data = group_data.sort_values("DateTime")
-        group_data["DayOfYear"] = group_data["DateTime"].dt.dayofyear
-        cumulative_mass = group_data["PayloadMass"].cumsum()
-
+    for year, points in cumulative.groupby("Year"):
         if year in year_color_map:
             style = {"label": str(year), "color": year_color_map[year]}
         else:
@@ -128,8 +124,8 @@ def plot_cumulative_payload_mass_to_orbit(df_filtered):
             style = {"label": label, "color": OLDER_YEARS_COLOR, "linewidth": 1}
 
         ax.plot(
-            group_data["DayOfYear"],
-            cumulative_mass,
+            points["DayOfYear"],
+            points["CumulativePayloadMass"],
             drawstyle="steps-post",
             **style,
         )
@@ -142,8 +138,7 @@ def plot_cumulative_payload_mass_to_orbit(df_filtered):
     ax.set_xticklabels([date.strftime("%b 1") for date in months_to_label], rotation=0)
 
     # Set the x-axis limit to the maximum day of the year
-    current_year = datetime.datetime.now().year
-    days_in_year = 366 if calendar.isleap(current_year) else 365
+    days_in_year = 366 if calendar.isleap(today.year) else 365
     ax.set_xlim(-14, days_in_year + 7)
 
     fig.tight_layout()

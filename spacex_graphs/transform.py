@@ -33,82 +33,57 @@ def categorize_starlink(payload, orbit):
 
 
 def build_dataframe(records):
-    """Builds the launch DataFrame with standardized orbit categories."""
+    """Builds the launch DataFrame with standardized orbit categories.
+
+    "Orbit" holds the category used by the graphs; "RawOrbit" keeps the
+    Wikipedia text for the CSV export.
+    """
     df = pd.DataFrame(
         records,
-        columns=["Year", "Orbit", "Payload", "PayloadMass", "DateTime", "Vehicle"],
+        columns=["Year", "RawOrbit", "Payload", "PayloadMass", "DateTime", "Vehicle"],
     )
-    df["Orbit"] = df.apply(
-        lambda x: categorize_starlink(x["Payload"], x["Orbit"]), axis=1
-    )
-    df["Orbit"] = df["Orbit"].apply(clean_orbit_category)
+    df["Orbit"] = [
+        clean_orbit_category(categorize_starlink(payload, orbit))
+        for payload, orbit in zip(df["Payload"], df["RawOrbit"])
+    ]
     return df
 
 
 def payload_mass_by_year_orbit(df):
     """Sums payload mass grouped by year and orbit category."""
-    return df.drop(columns="DateTime").groupby(["Year", "Orbit"]).sum().reset_index()
+    return df.groupby(["Year", "Orbit"], as_index=False)["PayloadMass"].sum()
 
 
-def build_cumulative_frame(df):
-    """Prepares the per-year cumulative payload mass frame for plotting.
+def _period_end(year, today):
+    """The last day plotted for a year: today for the current year."""
+    if year == today.year:
+        return datetime.datetime.combine(today, datetime.time())
+    return datetime.datetime(year, 12, 31)
 
-    Adds a zero-mass entry at January 1st of each year so every year's line
-    starts at the origin, and filters to MIN_CUMULATIVE_YEAR onwards.
+
+def build_cumulative_frame(df, today):
+    """Builds the per-year cumulative payload mass series for plotting.
+
+    Each year from MIN_CUMULATIVE_YEAR onwards gets a zero-mass point on
+    January 1st, so its line starts at the origin, and a point at the end of
+    its period (December 31st, or `today` for the current year), so its line
+    extends to there. Returns one row per point, with "DayOfYear" and
+    "CumulativePayloadMass" ready to plot.
     """
-    df = df.sort_values(by="DateTime")
-    df["CumulativePayloadMass"] = df.groupby("Year")["PayloadMass"].transform(
-        pd.Series.cumsum
+    df = df[df["Year"] >= MIN_CUMULATIVE_YEAR]
+    boundaries = []
+    for year in df["Year"].unique():
+        for when in (datetime.datetime(year, 1, 1), _period_end(year, today)):
+            boundaries.append({"Year": year, "PayloadMass": 0, "DateTime": when})
+
+    points = pd.concat(
+        [pd.DataFrame(boundaries), df[["Year", "PayloadMass", "DateTime"]]],
+        ignore_index=True,
     )
-
-    initial_entries = []
-    for year in df["Year"].unique():
-        if year >= MIN_CUMULATIVE_YEAR:
-            initial_entries.append(
-                {
-                    "Year": year,
-                    "Orbit": "",
-                    "Payload": "",
-                    "PayloadMass": 0,
-                    "DateTime": datetime.datetime(year, 1, 1),
-                    "Vehicle": "",
-                    "CumulativePayloadMass": 0,
-                }
-            )
-
-    df = pd.concat([pd.DataFrame(initial_entries), df], ignore_index=True)
-    df["DateTime"] = pd.to_datetime(df["DateTime"])
-    df["DayOfYear"] = df["DateTime"].dt.dayofyear
-    return df[df["Year"] >= MIN_CUMULATIVE_YEAR]
-
-
-def add_end_of_period_entries(df):
-    """Adds an entry at the end of each year's period with the last known
-    cumulative payload mass (end of year, or today for the current year)."""
-    now = datetime.datetime.now()
-    end_of_period_entries = []
-
-    for year in df["Year"].unique():
-        last_entry_for_year = df[df["Year"] == year].iloc[-1]
-        last_cumulative_mass = last_entry_for_year["CumulativePayloadMass"]
-
-        if year == now.year:
-            period_end_date = datetime.datetime(year, 1, 1) + datetime.timedelta(
-                days=now.timetuple().tm_yday - 1
-            )
-        else:
-            period_end_date = datetime.datetime(year, 12, 31)
-
-        end_of_period_entries.append(
-            {
-                "Year": year,
-                "PayloadMass": 0,  # No additional payload, so mass is 0
-                "DateTime": period_end_date,
-                "CumulativePayloadMass": last_cumulative_mass,
-                "DayOfYear": period_end_date.timetuple().tm_yday,
-            }
-        )
-
-    return pd.concat(
-        [df, pd.DataFrame(end_of_period_entries)], ignore_index=True
-    ).sort_values(by="DateTime")
+    points["DateTime"] = pd.to_datetime(points["DateTime"])
+    # Stable sort keeps the zero-mass January 1st point ahead of any launch
+    # at exactly midnight, so cumulative sums never step backwards
+    points = points.sort_values(["Year", "DateTime"], kind="stable")
+    points["CumulativePayloadMass"] = points.groupby("Year")["PayloadMass"].cumsum()
+    points["DayOfYear"] = points["DateTime"].dt.dayofyear
+    return points.reset_index(drop=True)

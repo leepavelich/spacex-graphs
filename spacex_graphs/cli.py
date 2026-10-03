@@ -1,6 +1,7 @@
 """Command-line entry point: fetch, transform, plot, and save/show the graphs."""
 
 import argparse
+import datetime
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -70,17 +71,20 @@ def run(save_output):
             cache.write_last_run_date()
             return
 
+    # Launch times are UTC, so "today" (where the current year's line ends)
+    # is the UTC date too; computed once here so the transforms stay pure
+    today = datetime.datetime.now(datetime.timezone.utc).date()
     df = transform.build_dataframe(records)
     fig_by_year = plotting.plot_payload_mass_to_orbit_by_year(
         transform.payload_mass_by_year_orbit(df)
     )
     fig_cumulative = plotting.plot_cumulative_payload_mass_to_orbit(
-        transform.build_cumulative_frame(df)
+        transform.build_cumulative_frame(df, today), today
     )
 
     if save_output:
         output.save_plots(fig_by_year, fig_cumulative)
-        output.save_launches_csv(records)
+        output.save_launches_csv(df)
         cache.save_data_hash(records)
         print("Graphs updated successfully")
     else:

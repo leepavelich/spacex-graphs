@@ -27,7 +27,10 @@ def _cumulative_figure(years):
         for year in years
     ]
     df = build_dataframe(records)
-    return plot_cumulative_payload_mass_to_orbit(build_cumulative_frame(df))
+    today = datetime.date(2026, 10, 3)
+    return plot_cumulative_payload_mass_to_orbit(
+        build_cumulative_frame(df, today), today
+    )
 
 
 class TestPlotCumulative(unittest.TestCase):
