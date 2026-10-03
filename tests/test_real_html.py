@@ -25,12 +25,48 @@ class TestRealFalconPage(unittest.TestCase):
         self.assertEqual(
             _parse("falcon_launches.html", FALCON_URL),
             [
-                (datetime.datetime(2025, 1, 4, 1, 27), "Thuraya 4-NGS", 5000, "GTO", "Falcon 9"),
-                (datetime.datetime(2025, 1, 6, 20, 43), f"Starlink: Group{nbsp}6‑71", 17500, "LEO", "Falcon 9"),
-                (datetime.datetime(2025, 1, 8, 15, 27), f"Starlink: Group{nbsp}12-11 (21{nbsp}satellites)", 16500, "LEO", "Falcon 9"),
-                (datetime.datetime(2025, 1, 10, 3, 53), f"NROL-153 (22{nbsp}Starshield satellites)[35]", 0, "LEO", "Falcon 9"),
-                (datetime.datetime(2025, 1, 10, 19, 11), f"Starlink: Group{nbsp}12-12 (21{nbsp}satellites)", 16500, "LEO", "Falcon 9"),
-                (datetime.datetime(2025, 1, 13, 16, 47), f"Starlink: Group{nbsp}12-4 (21{nbsp}satellites)", 16500, "LEO", "Falcon 9"),
+                (
+                    datetime.datetime(2025, 1, 4, 1, 27),
+                    "Thuraya 4-NGS",
+                    5000,
+                    "GTO",
+                    "Falcon 9",
+                ),
+                (
+                    datetime.datetime(2025, 1, 6, 20, 43),
+                    f"Starlink: Group{nbsp}6‑71",
+                    17500,
+                    "LEO",
+                    "Falcon 9",
+                ),
+                (
+                    datetime.datetime(2025, 1, 8, 15, 27),
+                    f"Starlink: Group{nbsp}12-11 (21{nbsp}satellites)",
+                    16500,
+                    "LEO",
+                    "Falcon 9",
+                ),
+                (
+                    datetime.datetime(2025, 1, 10, 3, 53),
+                    f"NROL-153 (22{nbsp}Starshield satellites)[35]",
+                    0,
+                    "LEO",
+                    "Falcon 9",
+                ),
+                (
+                    datetime.datetime(2025, 1, 10, 19, 11),
+                    f"Starlink: Group{nbsp}12-12 (21{nbsp}satellites)",
+                    16500,
+                    "LEO",
+                    "Falcon 9",
+                ),
+                (
+                    datetime.datetime(2025, 1, 13, 16, 47),
+                    f"Starlink: Group{nbsp}12-4 (21{nbsp}satellites)",
+                    16500,
+                    "LEO",
+                    "Falcon 9",
+                ),
             ],
         )
 
@@ -46,10 +82,34 @@ class TestRealStarshipPage(unittest.TestCase):
         self.assertEqual(
             _parse("starship_launches.html", STARSHIP_URL),
             [
-                (datetime.datetime(2024, 3, 14, 13, 25), "Starship Test", 0, "Suborbital[19]", "Block 1 Starship"),
-                (datetime.datetime(2024, 6, 6, 12, 50), "Starship Test", 0, "Suborbital[23]", "Block 1 Starship"),
-                (datetime.datetime(2024, 10, 13, 12, 25), "Starship Test", 0, "Suborbital[29]", "Block 1 Starship"),
-                (datetime.datetime(2024, 11, 19, 22, 0), "Plush banana", 0, "Transatmospheric[31]", "Block 1 Starship"),
+                (
+                    datetime.datetime(2024, 3, 14, 13, 25),
+                    "Starship Test",
+                    0,
+                    "Suborbital[19]",
+                    "Block 1 Starship",
+                ),
+                (
+                    datetime.datetime(2024, 6, 6, 12, 50),
+                    "Starship Test",
+                    0,
+                    "Suborbital[23]",
+                    "Block 1 Starship",
+                ),
+                (
+                    datetime.datetime(2024, 10, 13, 12, 25),
+                    "Starship Test",
+                    0,
+                    "Suborbital[29]",
+                    "Block 1 Starship",
+                ),
+                (
+                    datetime.datetime(2024, 11, 19, 22, 0),
+                    "Plush banana",
+                    0,
+                    "Transatmospheric[31]",
+                    "Block 1 Starship",
+                ),
             ],
         )
 

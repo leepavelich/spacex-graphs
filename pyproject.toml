@@ -1,0 +1,50 @@
+[project]
+name = "spacex-graphs"
+version = "1.0.0"
+description = "Graphs of SpaceX payload mass launched, built from Wikipedia launch lists"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+# Runtime dependencies are pinned, with hashes, in requirements.in/requirements.txt
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # import sorting
+    "UP",   # modern syntax for the target Python
+    "B",    # likely bugs
+    "SIM",  # simplifications
+    "RUF",  # ruff-specific checks
+]
+ignore = [
+    # The formatter owns line length; long string literals in tests are fine
+    "E501",
+    # Wikipedia text and legend labels use en dashes and non-breaking spaces
+    # on purpose, so "ambiguous" Unicode is expected here
+    "RUF001", "RUF002", "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test modules select the Agg backend before importing pyplot
+"tests/*" = ["E402"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["spacex_graphs", "tests"]
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+# Tests are type-checked for misuse of the package API, without requiring
+# every test method and helper to be annotated
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false

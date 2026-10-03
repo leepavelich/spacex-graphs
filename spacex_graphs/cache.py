@@ -1,15 +1,21 @@
 """HTTP caching (ETag/Last-Modified) and change detection for launch data."""
 
+import datetime
 import hashlib
 import json
+import logging
 import os
+from collections.abc import Iterable
+from typing import Any
 
 import requests
 
 from spacex_graphs.config import CACHE_DIR, HEADERS, REQUEST_TIMEOUT, WIKIPEDIA_PAGES
 
+logger = logging.getLogger(__name__)
 
-def _cache_paths(url):
+
+def _cache_paths(url: str) -> tuple[str, str]:
     """Returns the (metadata, content) cache file paths for a URL."""
     cache_key = hashlib.md5(url.encode()).hexdigest()
     return (
@@ -18,7 +24,7 @@ def _cache_paths(url):
     )
 
 
-def fetch_with_cache(url):
+def fetch_with_cache(url: str) -> tuple[bytes, bool]:
     """Fetches a URL with ETag/Last-Modified caching support.
 
     Returns a tuple (content, not_modified) where not_modified is True when
@@ -29,12 +35,12 @@ def fetch_with_cache(url):
 
     has_cached_content = os.path.exists(cache_content_path)
 
-    cached_meta = {}
+    cached_meta: dict[str, str] = {}
     # Only send validators when the body they describe is on disk; otherwise a
     # 304 would leave nothing to return
     if has_cached_content and os.path.exists(cache_meta_path):
         try:
-            with open(cache_meta_path, "r", encoding="utf-8") as f:
+            with open(cache_meta_path, encoding="utf-8") as f:
                 cached_meta = json.load(f)
         except (OSError, ValueError):
             cached_meta = {}
@@ -46,23 +52,21 @@ def fetch_with_cache(url):
         request_headers["If-Modified-Since"] = cached_meta["last-modified"]
 
     try:
-        response = requests.get(
-            url, headers=request_headers, timeout=REQUEST_TIMEOUT
-        )
+        response = requests.get(url, headers=request_headers, timeout=REQUEST_TIMEOUT)
     except requests.RequestException as error:
         if not has_cached_content:
             raise
-        print(f"  ! {page_name} (using cached - {type(error).__name__})")
+        logger.warning("  ! %s (using cached - %s)", page_name, type(error).__name__)
         with open(cache_content_path, "rb") as f:
             return f.read(), False
 
     if response.status_code == 304 and has_cached_content:
-        print(f"  ✓ {page_name} (cached)")
+        logger.info("  ✓ %s (cached)", page_name)
         with open(cache_content_path, "rb") as f:
             return f.read(), True
 
     if response.status_code == 200:
-        print(f"  ↓ {page_name} (downloaded)")
+        logger.info("  ↓ %s (downloaded)", page_name)
         with open(cache_content_path, "wb") as f:
             f.write(response.content)
 
@@ -78,7 +82,9 @@ def fetch_with_cache(url):
 
     # Fallback to cached content if the server returned an error status
     if has_cached_content:
-        print(f"  ! {page_name} (using cached - request failed)")
+        logger.warning(
+            "  ! %s (using cached - HTTP %s)", page_name, response.status_code
+        )
         with open(cache_content_path, "rb") as f:
             return f.read(), False
 
@@ -89,12 +95,12 @@ def fetch_with_cache(url):
     )
 
 
-def _hash_file_path():
+def _hash_file_path() -> str:
     return os.path.join(CACHE_DIR, "data_hash.txt")
 
 
-def compute_data_hash(records, today):
-    """Hashes the launch data together with today's date.
+def compute_data_hash(records: Iterable[tuple[Any, ...]], today: datetime.date) -> str:
+    """Hashes the launch records (any tuples) together with today's date.
 
     The date is included because the cumulative graph's current-year line
     extends to today, so the outputs legitimately change once per day even
@@ -105,7 +111,7 @@ def compute_data_hash(records, today):
     return hashlib.sha256(combined.encode()).hexdigest()
 
 
-def has_data_changed(records, today):
+def has_data_changed(records: Iterable[tuple[Any, ...]], today: datetime.date) -> bool:
     """Checks if the outputs would differ from the last successful run.
 
     Does not update the stored hash; call save_data_hash once the outputs
@@ -114,18 +120,18 @@ def has_data_changed(records, today):
     hash_file = _hash_file_path()
     if not os.path.exists(hash_file):
         return True
-    with open(hash_file, "r", encoding="utf-8") as f:
+    with open(hash_file, encoding="utf-8") as f:
         old_hash = f.read().strip()
     return old_hash != compute_data_hash(records, today)
 
 
-def save_data_hash(records, today):
+def save_data_hash(records: Iterable[tuple[Any, ...]], today: datetime.date) -> None:
     """Records the data hash after outputs were generated successfully."""
     with open(_hash_file_path(), "w", encoding="utf-8") as f:
         f.write(compute_data_hash(records, today))
 
 
-def write_last_run_date(today):
+def write_last_run_date(today: datetime.date) -> None:
     """Records the date the graphs were last checked/generated."""
     date_file = os.path.join(CACHE_DIR, "last_run_date.txt")
     with open(date_file, "w", encoding="utf-8") as f:

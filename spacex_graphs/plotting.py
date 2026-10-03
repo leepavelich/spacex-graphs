@@ -2,8 +2,12 @@
 
 import calendar
 import datetime
+from typing import Any
 
 import matplotlib.pyplot as plt
+import pandas as pd
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
 from spacex_graphs.config import HIGHLIGHT_FROM_YEAR
@@ -39,7 +43,9 @@ YEAR_COLORS = [
 OLDER_YEARS_COLOR = "#898781"
 
 
-def create_figure(title, xlabel, ylabel, size=(10, 7)):
+def create_figure(
+    title: str, xlabel: str, ylabel: str, size: tuple[float, float] = (10, 7)
+) -> tuple[Figure, Axes]:
     """Creates a figure with the given title, x label, and y label"""
     fig, ax = plt.subplots(figsize=size)
     ax.set_title(title)
@@ -52,7 +58,9 @@ def create_figure(title, xlabel, ylabel, size=(10, 7)):
     return fig, ax
 
 
-def plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit):
+def plot_payload_mass_to_orbit_by_year(
+    payload_mass_by_year_orbit: pd.DataFrame,
+) -> Figure:
     """Plots launched payload mass by year and destination as a stacked bar chart.
 
     Includes suborbital (Transatmospheric) payloads, which is why the title
@@ -64,9 +72,13 @@ def plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit):
     ordered_columns = list(ORBIT_COLORS)
     # reindex (not [ordered_columns]) so a category with no launches yet is
     # plotted as zero instead of raising KeyError
-    pivot_df = payload_mass_by_year_orbit.pivot(
-        index="Year", columns="Orbit", values="PayloadMass"
-    ).reindex(columns=ordered_columns, fill_value=0).fillna(0)
+    pivot_df = (
+        payload_mass_by_year_orbit.pivot(
+            index="Year", columns="Orbit", values="PayloadMass"
+        )
+        .reindex(columns=ordered_columns, fill_value=0)
+        .fillna(0)
+    )
 
     pivot_df.plot(
         kind="bar",
@@ -75,15 +87,14 @@ def plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit):
         ax=ax,
     )
 
-    # A fixed amount of padding above the bars for the annotations
-    fixed_padding = 10000
-
-    # Annotate each bar with the total payload mass for the year
+    # Label each bar with the year's total, a few points above the bar so the
+    # gap looks the same whatever the axis scale
     for i, total in enumerate(pivot_df.sum(axis=1)):
-        ax.text(
-            i,
-            total + fixed_padding,
+        ax.annotate(
             f"{int(total):,}",
+            xy=(i, total),
+            xytext=(0, 2),
+            textcoords="offset points",
             ha="center",
             va="bottom",
             color="grey",
@@ -96,7 +107,9 @@ def plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit):
     return fig
 
 
-def plot_cumulative_payload_mass_to_orbit(cumulative, today):
+def plot_cumulative_payload_mass_to_orbit(
+    cumulative: pd.DataFrame, today: datetime.date
+) -> Figure:
     """Plots cumulative launched payload mass by year as line charts.
 
     Expects the frame from transform.build_cumulative_frame.
@@ -108,7 +121,8 @@ def plot_cumulative_payload_mass_to_orbit(cumulative, today):
     )
     sorted_years = sorted(cumulative["Year"].unique(), reverse=True)
     highlighted_years = [y for y in sorted_years if y >= HIGHLIGHT_FROM_YEAR]
-    year_color_map = dict(zip(highlighted_years, YEAR_COLORS))
+    # Not strict: highlighted years beyond the palette deliberately fall through
+    year_color_map = dict(zip(highlighted_years, YEAR_COLORS, strict=False))
     older_years = [y for y in sorted_years if y not in year_color_map]
     if len(older_years) == 1:
         older_label = str(older_years[0])
@@ -117,7 +131,7 @@ def plot_cumulative_payload_mass_to_orbit(cumulative, today):
 
     for year, points in cumulative.groupby("Year"):
         if year in year_color_map:
-            style = {"label": str(year), "color": year_color_map[year]}
+            style: dict[str, Any] = {"label": str(year), "color": year_color_map[year]}
         else:
             # Only the newest of the older years carries the shared legend entry
             label = older_label if year == older_years[0] else "_nolegend_"

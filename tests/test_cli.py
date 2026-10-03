@@ -10,9 +10,11 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-from spacex_graphs import cache, cli, output  # noqa: E402
-from spacex_graphs.config import WIKIPEDIA_PAGES  # noqa: E402
-from spacex_graphs.parsing import LaunchRecord  # noqa: E402
+import matplotlib.pyplot
+
+from spacex_graphs import cache, cli, output
+from spacex_graphs.config import WIKIPEDIA_PAGES
+from spacex_graphs.parsing import LaunchRecord
 
 RECORD = LaunchRecord(
     2025, "LEO", "Starlink", 1, datetime.datetime(2025, 1, 1), "Falcon 9"
@@ -26,9 +28,11 @@ class TestLoadLaunchRecords(unittest.TestCase):
         def fake_fetch_and_parse(url):
             return [] if url == empty_url else [RECORD]
 
-        with mock.patch.object(cli, "_fetch_and_parse", fake_fetch_and_parse):
-            with self.assertRaises(cli.EmptyPageError) as ctx:
-                cli.load_launch_records()
+        with (
+            mock.patch.object(cli, "_fetch_and_parse", fake_fetch_and_parse),
+            self.assertRaises(cli.EmptyPageError) as ctx,
+        ):
+            cli.load_launch_records()
         self.assertIn(WIKIPEDIA_PAGES[empty_url], str(ctx.exception))
 
     def test_all_pages_with_records_succeeds(self):
@@ -37,11 +41,18 @@ class TestLoadLaunchRecords(unittest.TestCase):
         self.assertEqual(len(records), len(WIKIPEDIA_PAGES))
 
     def test_main_exits_nonzero_on_empty_page(self):
-        with mock.patch.object(
-            cli, "run", side_effect=cli.EmptyPageError("no launches parsed")
-        ), mock.patch("sys.argv", ["graphs.py", "--output"]):
-            with self.assertRaises(SystemExit) as ctx:
-                cli.main()
+        with (
+            mock.patch.object(
+                cli, "run", side_effect=cli.EmptyPageError("no launches parsed")
+            ),
+            mock.patch("sys.argv", ["graphs.py", "--output"]),
+            # main() configures the root logger; keep that out of other tests
+            mock.patch("spacex_graphs.cli.logging.basicConfig"),
+            self.assertRaises(SystemExit) as ctx,
+            self.assertLogs(cli.logger, "ERROR") as logs,
+        ):
+            cli.main()
+        self.assertIn("no launches parsed", logs.output[0])
         self.assertEqual(ctx.exception.code, 1)
 
 
@@ -75,8 +86,8 @@ class TestRun(unittest.TestCase):
         self.enterContext(
             mock.patch.object(cli, "load_launch_records", lambda: self.records)
         )
-        self.show = self.enterContext(mock.patch.object(cli.plt, "show"))
-        self.addCleanup(cli.plt.close, "all")
+        self.show = self.enterContext(mock.patch("spacex_graphs.cli.plt.show"))
+        self.addCleanup(matplotlib.pyplot.close, "all")
 
     def _outputs(self):
         if not os.path.isdir(self.output_dir):
@@ -114,7 +125,7 @@ class TestRun(unittest.TestCase):
 
     @staticmethod
     def _today():
-        return datetime.datetime.now(datetime.timezone.utc).date()
+        return datetime.datetime.now(datetime.UTC).date()
 
 
 if __name__ == "__main__":

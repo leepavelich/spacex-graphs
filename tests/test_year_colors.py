@@ -7,15 +7,15 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
-from spacex_graphs.parsing import LaunchRecord  # noqa: E402
-from spacex_graphs.plotting import (  # noqa: E402
+from spacex_graphs.parsing import LaunchRecord
+from spacex_graphs.plotting import (
     OLDER_YEARS_COLOR,
     YEAR_COLORS,
     plot_cumulative_payload_mass_to_orbit,
 )
-from spacex_graphs.transform import (  # noqa: E402
+from spacex_graphs.transform import (
     build_cumulative_frame,
     build_dataframe,
 )
@@ -61,6 +61,7 @@ class TestPlotCumulative(unittest.TestCase):
         ax = _cumulative_figure(range(2020, 2026)).axes[0]
         legend = [text.get_text() for text in ax.get_legend().get_texts()]
         self.assertEqual(legend, [str(year) for year in range(2020, 2026)])
+
 
 if __name__ == "__main__":
     unittest.main()

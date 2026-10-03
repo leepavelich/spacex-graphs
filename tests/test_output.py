@@ -11,11 +11,11 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
-from spacex_graphs import output  # noqa: E402
-from spacex_graphs.parsing import LaunchRecord  # noqa: E402
-from spacex_graphs.transform import build_dataframe  # noqa: E402
+from spacex_graphs import output
+from spacex_graphs.parsing import LaunchRecord
+from spacex_graphs.transform import build_dataframe
 
 
 def _figure():
@@ -57,8 +57,22 @@ class TestSaveLaunchesCsv(unittest.TestCase):
     def test_rows_are_chronological_with_raw_and_categorized_orbits(self):
         df = build_dataframe(
             [
-                LaunchRecord(2026, "LEO", "Starlink 9", 17000, datetime.datetime(2026, 2, 1, 5, 30), "Falcon 9"),
-                LaunchRecord(2025, "GTO[12]", "SES", 4000, datetime.datetime(2025, 7, 4), "Falcon Heavy"),
+                LaunchRecord(
+                    2026,
+                    "LEO",
+                    "Starlink 9",
+                    17000,
+                    datetime.datetime(2026, 2, 1, 5, 30),
+                    "Falcon 9",
+                ),
+                LaunchRecord(
+                    2025,
+                    "GTO[12]",
+                    "SES",
+                    4000,
+                    datetime.datetime(2025, 7, 4),
+                    "Falcon Heavy",
+                ),
             ]
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -69,8 +83,16 @@ class TestSaveLaunchesCsv(unittest.TestCase):
 
         self.assertEqual(
             list(rows[0]),
-            ["Date", "Time (UTC)", "Year", "Vehicle", "Payload",
-             "Payload Mass (kg)", "Orbit", "Orbit Category"],
+            [
+                "Date",
+                "Time (UTC)",
+                "Year",
+                "Vehicle",
+                "Payload",
+                "Payload Mass (kg)",
+                "Orbit",
+                "Orbit Category",
+            ],
         )
         self.assertEqual([row["Date"] for row in rows], ["2025-07-04", "2026-02-01"])
         self.assertEqual(rows[1]["Time (UTC)"], "05:30:00")

@@ -2,9 +2,10 @@
 
 import datetime
 import re
-from typing import NamedTuple, Optional
+from collections.abc import Callable, Sequence
+from typing import NamedTuple
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 
 class LaunchRecord(NamedTuple):
@@ -18,7 +19,7 @@ class LaunchRecord(NamedTuple):
     vehicle: str
 
 
-def parse_launch_datetime(text) -> Optional[datetime.datetime]:
+def parse_launch_datetime(text: str) -> datetime.datetime | None:
     """Parses a launch date/time from a Wikipedia date cell.
 
     Handles "26 August 2025", "August 26, 2025", with an optional "HH:MM" time
@@ -54,11 +55,11 @@ _RANGE = rf"({_NUMBER})\s*(?:-|to)\s*({_NUMBER})"
 _KG_PER_LB = 0.45359237
 
 
-def _to_float(number):
+def _to_float(number: str) -> float:
     return float(number.replace(",", ""))
 
 
-def _mass_before_unit(s, unit):
+def _mass_before_unit(s: str, unit: str) -> float | None:
     """Returns the mass (or average of a range) immediately before a unit."""
     range_match = re.search(rf"{_RANGE}\s*{unit}\b", s, flags=re.IGNORECASE)
     if range_match:
@@ -69,7 +70,7 @@ def _mass_before_unit(s, unit):
     return None
 
 
-def parse_payload_mass_text(text) -> int:
+def parse_payload_mass_text(text: str | None) -> int:
     """Parses a payload mass cell into an integer mass in kg.
 
     Handles values like:
@@ -92,23 +93,23 @@ def parse_payload_mass_text(text) -> int:
 
     kg = _mass_before_unit(s, "kg")
     if kg is not None:
-        return int(round(kg))
+        return round(kg)
 
     lb = _mass_before_unit(s, "lb")
     if lb is not None:
-        return int(round(lb * _KG_PER_LB))
+        return round(lb * _KG_PER_LB)
 
     range_match = re.search(_RANGE, s)
     if range_match:
-        return int(round((_to_float(range_match[1]) + _to_float(range_match[2])) / 2))
+        return round((_to_float(range_match[1]) + _to_float(range_match[2])) / 2)
     single_match = re.search(_NUMBER, s)
     if single_match:
-        return int(round(_to_float(single_match[0])))
+        return round(_to_float(single_match[0]))
 
     return 0
 
 
-def _parse_falcon_row(cols) -> Optional[LaunchRecord]:
+def _parse_falcon_row(cols: Sequence[Tag]) -> LaunchRecord | None:
     """Parses a Falcon 9/Heavy table row.
 
     Columns: 0: Date, 1: Booster, 3: Payload, 4: Mass, 5: Orbit, 7: Outcome.
@@ -129,17 +130,14 @@ def _parse_falcon_row(cols) -> Optional[LaunchRecord]:
     if "success" not in launch_outcome:
         payload_mass = 0
 
-    if "Heavy" in booster or "FH" in booster:
-        vehicle = "Falcon Heavy"
-    else:
-        vehicle = "Falcon 9"
+    vehicle = "Falcon Heavy" if "Heavy" in booster or "FH" in booster else "Falcon 9"
 
     return LaunchRecord(
         launch_datetime.year, orbit, payload, payload_mass, launch_datetime, vehicle
     )
 
 
-def _parse_starship_row(cols) -> Optional[LaunchRecord]:
+def _parse_starship_row(cols: Sequence[Tag]) -> LaunchRecord | None:
     """Parses a Starship table row.
 
     Columns: 0: Date, 2: Ship version, 4: Payload, 5: Mass, 6: Orbit, 8: Outcome.
@@ -159,10 +157,7 @@ def _parse_starship_row(cols) -> Optional[LaunchRecord]:
 
     # Extract block version from ship (e.g., "Block 1S24" -> "Block 1 Starship")
     block_match = re.search(r"Block\s+(\d+)", ship_version)
-    if block_match:
-        vehicle = f"Block {block_match.group(1)} Starship"
-    else:
-        vehicle = "Starship"
+    vehicle = f"Block {block_match.group(1)} Starship" if block_match else "Starship"
 
     # Only successful launches count payload mass
     if "success" in launch_outcome:
@@ -179,15 +174,18 @@ def _parse_starship_row(cols) -> Optional[LaunchRecord]:
     )
 
 
-def parse_launch_page(url, content) -> list:
+def parse_launch_page(url: str, content: bytes | str) -> list[LaunchRecord]:
     """Parses all launch records from a Wikipedia launch-list page."""
-    parse_row = _parse_starship_row if "Starship" in url else _parse_falcon_row
+    parse_row: Callable[[Sequence[Tag]], LaunchRecord | None] = (
+        _parse_starship_row if "Starship" in url else _parse_falcon_row
+    )
 
     soup = BeautifulSoup(content, "html.parser")
-    records = []
+    records: list[LaunchRecord] = []
     for table in soup.find_all("table", {"class": "wikitable"}):
         for row in table.find_all("tr"):
-            record = parse_row(row.find_all("td"))
+            cells = [cell for cell in row.find_all("td") if isinstance(cell, Tag)]
+            record = parse_row(cells)
             if record is not None:
                 records.append(record)
     return records

@@ -36,12 +36,16 @@ class TestCleanOrbitCategory(unittest.TestCase):
         self.assertEqual(
             clean_orbit_category("Transatmospheric (Starlink)"), "Transatmospheric"
         )
-        self.assertEqual(clean_orbit_category("Suborbital (Starlink)"), "Transatmospheric")
+        self.assertEqual(
+            clean_orbit_category("Suborbital (Starlink)"), "Transatmospheric"
+        )
 
     def test_unmapped_leo_variants_fall_back_to_leo(self):
         self.assertEqual(clean_orbit_category("Elliptical LEO"), "LEO (Other)")
         self.assertEqual(clean_orbit_category("Low Earth orbit"), "LEO (Other)")
-        self.assertEqual(clean_orbit_category("Elliptical LEO (Starlink)"), "LEO (Starlink)")
+        self.assertEqual(
+            clean_orbit_category("Elliptical LEO (Starlink)"), "LEO (Starlink)"
+        )
 
     def test_en_dash_and_footnote_variants(self):
         self.assertEqual(clean_orbit_category("Sun–Earth L1 insertion"), "Other")
@@ -141,7 +145,9 @@ class TestBuildCumulativeFrame(unittest.TestCase):
     def _series(self, records, year):
         frame = build_cumulative_frame(build_dataframe(records), self.TODAY)
         points = frame[frame["Year"] == year]
-        return list(zip(points["DayOfYear"], points["CumulativePayloadMass"]))
+        return list(
+            zip(points["DayOfYear"], points["CumulativePayloadMass"], strict=True)
+        )
 
     def test_past_year_runs_from_jan_1_to_dec_31(self):
         records = [
