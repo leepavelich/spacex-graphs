@@ -4,11 +4,13 @@ import csv
 import datetime
 import logging
 import os
+from collections.abc import Mapping
 
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.figure import Figure
 
+from spacex_graphs.transform import Col
 from spacex_graphs.validation import PublishedLaunch
 
 logger = logging.getLogger(__name__)
@@ -44,10 +46,11 @@ def missing_outputs(output_dir: str) -> list[str]:
     ]
 
 
-def save_plots(fig_by_year: Figure, fig_cumulative: Figure, *, output_dir: str) -> None:
-    """Saves the plots as SVG files, byte-identical for identical figures."""
-    _save_svg(fig_by_year, os.path.join(output_dir, BY_YEAR_SVG))
-    _save_svg(fig_cumulative, os.path.join(output_dir, CUMULATIVE_SVG))
+def save_plots(figures: Mapping[str, Figure], *, output_dir: str) -> None:
+    """Saves each figure as an SVG under its file name (a key of figures),
+    byte-identical for identical figures."""
+    for filename, figure in figures.items():
+        _save_svg(figure, os.path.join(output_dir, filename))
 
 
 def published_launches(output_dir: str) -> list[PublishedLaunch]:
@@ -96,23 +99,23 @@ def save_launches_csv(df: pd.DataFrame, *, output_dir: str) -> None:
     Takes the frame from transform.build_dataframe so the CSV's orbit
     categories always match the graphs.
     """
-    launches = df.sort_values("DateTime", kind="stable")
+    launches = df.sort_values(Col.DATETIME, kind="stable")
     text = {
         column: launches[column].map(_escape_formula)
-        for column in ("Vehicle", "Payload", "RawOrbit", "Outcome")
+        for column in (Col.VEHICLE, Col.PAYLOAD, Col.RAW_ORBIT, Col.OUTCOME)
     }
     csv_df = pd.DataFrame(
         {
-            "Date": launches["DateTime"].dt.strftime("%Y-%m-%d"),
-            "Time (UTC)": launches["DateTime"].dt.strftime("%H:%M:%S"),
-            "Year": launches["Year"],
-            "Vehicle": text["Vehicle"],
-            "Payload": text["Payload"],
-            "Payload Mass (kg)": launches["ReportedMass"],
-            "Orbit": text["RawOrbit"],
-            "Orbit Category": launches["Orbit"],
-            "Outcome": text["Outcome"],
-            "Counted Mass (kg)": launches["PayloadMass"],
+            "Date": launches[Col.DATETIME].dt.strftime("%Y-%m-%d"),
+            "Time (UTC)": launches[Col.DATETIME].dt.strftime("%H:%M:%S"),
+            "Year": launches[Col.YEAR],
+            "Vehicle": text[Col.VEHICLE],
+            "Payload": text[Col.PAYLOAD],
+            "Payload Mass (kg)": launches[Col.REPORTED_MASS],
+            "Orbit": text[Col.RAW_ORBIT],
+            "Orbit Category": launches[Col.ORBIT],
+            "Outcome": text[Col.OUTCOME],
+            "Counted Mass (kg)": launches[Col.MASS],
         }
     )
 

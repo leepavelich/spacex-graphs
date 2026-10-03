@@ -11,6 +11,7 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
 from spacex_graphs.config import HIGHLIGHT_FROM_YEAR, ORBIT_CATEGORIES
+from spacex_graphs.transform import Col
 
 # Colors for each orbit category, in config.ORBIT_CATEGORIES (legend) order
 ORBIT_COLORS = dict(
@@ -88,7 +89,7 @@ def plot_payload_mass_to_orbit_by_year(
     fig, ax = create_figure(
         "Payload Mass Launched by Year and Destination", "Year", "Payload Mass (kg)"
     )
-    unknown = set(payload_mass_by_year_orbit["Orbit"]) - set(ORBIT_COLORS)
+    unknown = set(payload_mass_by_year_orbit[Col.ORBIT]) - set(ORBIT_COLORS)
     if unknown:
         # reindex below would silently drop these categories' mass
         raise ValueError(f"orbit categories with no color: {sorted(unknown)}")
@@ -97,7 +98,7 @@ def plot_payload_mass_to_orbit_by_year(
     # plotted as zero instead of raising KeyError
     pivot_df = (
         payload_mass_by_year_orbit.pivot(
-            index="Year", columns="Orbit", values="PayloadMass"
+            index=Col.YEAR, columns=Col.ORBIT, values=Col.MASS
         )
         .reindex(columns=ordered_columns, fill_value=0)
         .fillna(0)
@@ -148,7 +149,7 @@ def plot_cumulative_payload_mass_to_orbit(
         "",
         "Cumulative Payload Mass (kg)",
     )
-    sorted_years = sorted(cumulative["Year"].unique(), reverse=True)
+    sorted_years = sorted(cumulative[Col.YEAR].unique(), reverse=True)
     # Colors follow each year's distance from today, so the current year is
     # always red, even in early January before its first launch (when red is
     # simply unused). Years past the palette, or before HIGHLIGHT_FROM_YEAR,
@@ -165,7 +166,7 @@ def plot_cumulative_payload_mass_to_orbit(
         else "".join(map(str, older_years))
     )
 
-    for year, points in cumulative.groupby("Year"):
+    for year, points in cumulative.groupby(Col.YEAR):
         if year in year_color_map:
             style: dict[str, Any] = {"label": str(year), "color": year_color_map[year]}
         else:
@@ -174,8 +175,8 @@ def plot_cumulative_payload_mass_to_orbit(
             style = {"label": label, "color": OLDER_YEARS_COLOR, "linewidth": 1}
 
         ax.plot(
-            points["DayOfYear"],
-            points["CumulativePayloadMass"],
+            points[Col.DAY_OF_YEAR],
+            points[Col.CUMULATIVE_MASS],
             drawstyle="steps-post",
             **style,
         )

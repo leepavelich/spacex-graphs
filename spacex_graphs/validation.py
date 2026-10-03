@@ -11,22 +11,23 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import NamedTuple
 
 from spacex_graphs.config import FIRST_CONTINUOUS_YEAR, MAX_DAYS_SINCE_LAUNCH
+from spacex_graphs.errors import DataError
 from spacex_graphs.parsing import LaunchRecord
 
 
-class EmptyPageError(RuntimeError):
+class EmptyPageError(DataError):
     """Raised when a Wikipedia page yields no launch records."""
 
 
-class MissingYearsError(RuntimeError):
+class MissingYearsError(DataError):
     """Raised when past years that should have launches have none."""
 
 
-class PublishedLaunchesLostError(RuntimeError):
+class PublishedLaunchesLostError(DataError):
     """Raised when launches or masses that were published have gone missing."""
 
 
-class NoRecentLaunchesError(RuntimeError):
+class NoRecentLaunchesError(DataError):
     """Raised when the newest parsed launch is too old to be the latest."""
 
 

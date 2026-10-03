@@ -11,6 +11,7 @@ from typing import Any, TypeVar, overload
 import requests
 
 from spacex_graphs.config import HEADERS, REQUEST_TIMEOUT, STALE_CACHE_LIMIT
+from spacex_graphs.errors import DataError
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +27,11 @@ def _cache_paths(url: str, cache_dir: str) -> tuple[str, str]:
     )
 
 
-class StaleCacheError(RuntimeError):
+class StaleCacheError(DataError):
     """Raised when a page can't be fetched and its cached copy is too old."""
 
 
-class FetchError(RuntimeError):
+class FetchError(DataError):
     """Raised when a page can't be fetched and there is no cached copy."""
 
 

@@ -14,21 +14,11 @@ import matplotlib.pyplot as plt
 
 from spacex_graphs import cache, output, plotting, transform, validation
 from spacex_graphs.config import CACHE_DIR, OUTPUT_DIR, WIKIPEDIA_PAGES, Page
+from spacex_graphs.errors import DataError
 from spacex_graphs.parsing import LaunchRecord, parse_launch_page
 
 logger = logging.getLogger(__name__)
 
-
-# Errors that mean the data can't be trusted: the run fails rather than
-# publishing graphs built from it
-DATA_ERRORS = (
-    validation.EmptyPageError,
-    validation.MissingYearsError,
-    validation.PublishedLaunchesLostError,
-    validation.NoRecentLaunchesError,
-    cache.FetchError,
-    cache.StaleCacheError,
-)
 
 # matplotlib backends that render to files only; with one of these, showing
 # the graphs on screen would silently do nothing
@@ -130,6 +120,7 @@ def run(
     if today is None:
         today = datetime.datetime.now(datetime.UTC).date()
     records = load_launch_records(today, cache_dir=cache_dir, output_dir=output_dir)
+    version = code_version()
 
     # When saving, skip regeneration if neither the data nor the date changed
     # since the last successful run and every output still exists. Parsing is
@@ -139,7 +130,7 @@ def run(
         save_output
         and not output.missing_outputs(output_dir)
         and not cache.has_data_changed(
-            records, today, cache_dir=cache_dir, code_version=code_version()
+            records, today, cache_dir=cache_dir, code_version=version
         )
     ):
         logger.info("No changes detected in launch data - skipping graph regeneration")
@@ -147,21 +138,22 @@ def run(
 
     df = transform.build_dataframe(records)
     caption = transform.chart_caption(df)
-    fig_by_year = plotting.plot_payload_mass_to_orbit_by_year(
-        transform.payload_mass_by_year_orbit(df),
-        current_year=today.year,
-        caption=caption,
-    )
-    fig_cumulative = plotting.plot_cumulative_payload_mass_to_orbit(
-        transform.build_cumulative_frame(df, today), today, caption=caption
-    )
+    # Each graph, keyed by the SVG file it is saved to
+    figures = {
+        output.BY_YEAR_SVG: plotting.plot_payload_mass_to_orbit_by_year(
+            transform.payload_mass_by_year_orbit(df),
+            current_year=today.year,
+            caption=caption,
+        ),
+        output.CUMULATIVE_SVG: plotting.plot_cumulative_payload_mass_to_orbit(
+            transform.build_cumulative_frame(df, today), today, caption=caption
+        ),
+    }
 
     if save_output:
-        output.save_plots(fig_by_year, fig_cumulative, output_dir=output_dir)
+        output.save_plots(figures, output_dir=output_dir)
         output.save_launches_csv(df, output_dir=output_dir)
-        cache.save_data_hash(
-            records, today, cache_dir=cache_dir, code_version=code_version()
-        )
+        cache.save_data_hash(records, today, cache_dir=cache_dir, code_version=version)
         logger.info("Graphs updated successfully")
     else:
         plt.show()
@@ -211,7 +203,7 @@ def main() -> None:
     _configure_logging(args.quiet)
     try:
         run(args.output)
-    except DATA_ERRORS as error:
+    except DataError as error:
         logger.error("ERROR: %s", error)
         sys.exit(1)
     except OSError as error:

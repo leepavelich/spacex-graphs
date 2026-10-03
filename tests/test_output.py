@@ -30,7 +30,10 @@ def _figure():
 
 def _render_svgs(directory):
     figs = (_figure(), _figure())
-    output.save_plots(*figs, output_dir=directory)
+    output.save_plots(
+        {output.BY_YEAR_SVG: figs[0], output.CUMULATIVE_SVG: figs[1]},
+        output_dir=directory,
+    )
     plt.close("all")
     contents = {}
     for name in sorted(os.listdir(directory)):
