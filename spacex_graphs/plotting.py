@@ -64,13 +64,26 @@ def create_figure(
     return fig, ax
 
 
+def _finish(fig: Figure, caption: str) -> None:
+    """Adds the caption, if any, under the chart and lays the figure out."""
+    if caption:
+        fig.text(0.01, 0.01, caption, fontsize=7, color="grey", ha="left", va="bottom")
+        fig.tight_layout(rect=(0, 0.03, 1, 1))
+    else:
+        fig.tight_layout()
+
+
 def plot_payload_mass_to_orbit_by_year(
     payload_mass_by_year_orbit: pd.DataFrame,
+    *,
+    current_year: int | None = None,
+    caption: str = "",
 ) -> Figure:
     """Plots launched payload mass by year and destination as a stacked bar chart.
 
     Includes suborbital (Transatmospheric) payloads, which is why the title
-    says "launched" rather than "to orbit".
+    says "launched" rather than "to orbit". The current_year's bar is
+    labelled "YTD", so a partial year doesn't read as a decline.
     """
     fig, ax = create_figure(
         "Payload Mass Launched by Year and Destination", "Year", "Payload Mass (kg)"
@@ -111,14 +124,20 @@ def plot_payload_mass_to_orbit_by_year(
             fontsize=8,
         )
 
+    ax.set_xticklabels(
+        [
+            f"{year} YTD" if year == current_year else str(year)
+            for year in pivot_df.index
+        ]
+    )
     ax.legend(title="Destination")
     ax.set_xlabel("")
-    fig.tight_layout()
+    _finish(fig, caption)
     return fig
 
 
 def plot_cumulative_payload_mass_to_orbit(
-    cumulative: pd.DataFrame, today: datetime.date
+    cumulative: pd.DataFrame, today: datetime.date, *, caption: str = ""
 ) -> Figure:
     """Plots cumulative launched payload mass by year as line charts.
 
@@ -165,5 +184,5 @@ def plot_cumulative_payload_mass_to_orbit(
     days_in_year = 366 if calendar.isleap(today.year) else 365
     ax.set_xlim(-14, days_in_year + 7)
 
-    fig.tight_layout()
+    _finish(fig, caption)
     return fig

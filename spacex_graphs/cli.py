@@ -144,11 +144,14 @@ def run(
         return
 
     df = transform.build_dataframe(records)
+    caption = transform.chart_caption(df)
     fig_by_year = plotting.plot_payload_mass_to_orbit_by_year(
-        transform.payload_mass_by_year_orbit(df)
+        transform.payload_mass_by_year_orbit(df),
+        current_year=today.year,
+        caption=caption,
     )
     fig_cumulative = plotting.plot_cumulative_payload_mass_to_orbit(
-        transform.build_cumulative_frame(df, today), today
+        transform.build_cumulative_frame(df, today), today, caption=caption
     )
 
     if save_output:

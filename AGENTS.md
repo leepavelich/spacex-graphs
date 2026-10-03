@@ -17,6 +17,7 @@ Guidance for coding agents working in this repository. It covers only what the c
 - The committed `outputs/spacex_launches.csv` is also the baseline for `validation.check_launch_counts`: a year with more than `MAX_LAUNCH_COUNT_DROP` fewer launches than it fails the run. If Wikipedia really does remove launches, regenerate the outputs deliberately rather than raising the limit.
 - In the cumulative chart, the current year is red and years before `HIGHLIGHT_FROM_YEAR` (2020) are grey on purpose: their payload mass is tiny next to recent years.
 - Chart titles say "launched", not "to orbit", because the totals include suborbital (Transatmospheric) payloads.
+- Each chart carries a caption from `transform.chart_caption`: the source and its license, the latest launch in the data, and how many launches count as 0 kg because their mass is unknown. It is built from the data, never the clock, so it doesn't make the SVGs change daily. The current year's bar is labelled "YTD".
 
 ## Wikipedia quirks
 
