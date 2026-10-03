@@ -6,14 +6,16 @@ import unittest
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.validation import (
     EmptyPageError,
-    LaunchCountDropError,
     MissingYearsError,
-    check_launch_counts,
+    NoRecentLaunchesError,
+    PublishedLaunch,
+    PublishedLaunchesLostError,
     check_pages_not_empty,
+    check_published_launches,
+    check_recent_launch,
     check_year_coverage,
     drop_duplicate_launches,
     drop_future_launches,
-    launch_counts_by_year,
 )
 
 TODAY = datetime.date(2026, 10, 3)
@@ -78,33 +80,80 @@ class TestCheckYearCoverage(unittest.TestCase):
         check_year_coverage([_launch(y) for y in range(2012, 2026)], TODAY)
 
 
-class TestCheckLaunchCounts(unittest.TestCase):
-    def test_counts_by_year(self):
-        self.assertEqual(
-            launch_counts_by_year(_launches({2024: 3, 2025: 1})), {2024: 3, 2025: 1}
-        )
+def _published(launch, mass=1):
+    return PublishedLaunch(
+        launch.launch_datetime.date(), launch.vehicle, launch.payload, mass
+    )
 
-    def test_small_corrections_and_growth_pass(self):
-        records = _launches({2024: 132, 2025: 170})
-        check_launch_counts(records, {2024: 134, 2025: 165})
 
-    def test_losing_most_of_a_year_fails(self):
-        # As if a column change made the 2026 table stop parsing
-        records = _launches({2025: 165, 2026: 3})
-        with self.assertRaises(LaunchCountDropError) as ctx:
-            check_launch_counts(records, {2025: 165, 2026: 117})
-        self.assertIn("2026 has 3 (was 117)", str(ctx.exception))
+class TestCheckPublishedLaunches(unittest.TestCase):
+    def setUp(self):
+        self.records = _launches({2025: 20, 2026: 10})
+        self.published = [_published(r) for r in self.records]
 
-    def test_drop_of_three_is_one_too_many(self):
-        with self.assertRaises(LaunchCountDropError):
-            check_launch_counts(_launches({2024: 131}), {2024: 134})
-
-    def test_a_year_disappearing_entirely_fails(self):
-        with self.assertRaises(LaunchCountDropError):
-            check_launch_counts(_launches({2025: 165}), {2024: 134, 2025: 165})
+    def test_unchanged_and_new_launches_pass(self):
+        check_published_launches([*self.records, _launch(2026, 9, 30)], self.published)
 
     def test_first_run_has_no_baseline(self):
-        check_launch_counts(_launches({2025: 1}), {})
+        check_published_launches(self.records, [])
+
+    def test_a_single_missing_launch_fails_and_is_named(self):
+        # As if one heavy Starship row's layout changed; no tolerance applies
+        with self.assertRaises(PublishedLaunchesLostError) as ctx:
+            check_published_launches(self.records[1:], self.published)
+        first = self.records[0]
+        self.assertIn("1 published launches are missing", str(ctx.exception))
+        self.assertIn(first.launch_datetime.date().isoformat(), str(ctx.exception))
+
+    def test_a_new_launch_next_to_a_lost_one_does_not_hide_it(self):
+        lost = self.records[-1]
+        new_next_day = lost._replace(
+            launch_datetime=lost.launch_datetime + datetime.timedelta(days=1),
+            payload="New",
+        )
+        with self.assertRaises(PublishedLaunchesLostError) as ctx:
+            check_published_launches([*self.records[:-1], new_next_day], self.published)
+        self.assertIn(lost.launch_datetime.date().isoformat(), str(ctx.exception))
+
+    def test_a_changed_launch_time_still_matches(self):
+        retimed = self.records[0]._replace(
+            launch_datetime=self.records[0].launch_datetime.replace(hour=3, minute=7)
+        )
+        check_published_launches([retimed, *self.records[1:]], self.published)
+
+    def test_two_launches_on_one_day_need_two_matches(self):
+        day = _launch(2026, 5, 5)
+        published = [_published(day), _published(day._replace(payload="Second"))]
+        with self.assertRaises(PublishedLaunchesLostError):
+            check_published_launches([day], published)
+
+    def test_a_known_mass_becoming_unknown_fails(self):
+        # As if a column reorder left the mass column unreadable
+        unknown = [r._replace(payload_mass=None) for r in self.records[:3]]
+        with self.assertRaises(PublishedLaunchesLostError) as ctx:
+            check_published_launches([*unknown, *self.records[3:]], self.published)
+        self.assertIn("3 published launches lost their mass", str(ctx.exception))
+
+    def test_a_mass_that_was_already_unknown_may_stay_unknown(self):
+        published = [_published(self.records[0], mass=None), *self.published[1:]]
+        unknown = self.records[0]._replace(payload_mass=None)
+        check_published_launches([unknown, *self.records[1:]], published)
+
+    def test_long_lists_are_truncated(self):
+        with self.assertRaises(PublishedLaunchesLostError) as ctx:
+            check_published_launches([], self.published)
+        self.assertIn("30 published launches are missing", str(ctx.exception))
+        self.assertIn("; ...", str(ctx.exception))
+
+
+class TestCheckRecentLaunch(unittest.TestCase):
+    def test_launch_within_the_limit_passes(self):
+        check_recent_launch([_launch(2026, 9, 3)], TODAY)  # 30 days before TODAY
+
+    def test_launch_older_than_the_limit_fails(self):
+        with self.assertRaises(NoRecentLaunchesError) as ctx:
+            check_recent_launch([_launch(2026, 9, 2)], TODAY)  # 31 days
+        self.assertIn("2026-09-02", str(ctx.exception))
 
 
 if __name__ == "__main__":

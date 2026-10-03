@@ -1,12 +1,15 @@
 """Writes generated artifacts (SVG graphs, CSV export) to the outputs directory."""
 
+import csv
+import datetime
 import logging
 import os
-from collections import Counter
 
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.figure import Figure
+
+from spacex_graphs.validation import PublishedLaunch
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +50,26 @@ def save_plots(fig_by_year: Figure, fig_cumulative: Figure, *, output_dir: str) 
     _save_svg(fig_cumulative, os.path.join(output_dir, CUMULATIVE_SVG))
 
 
-def published_launch_counts(output_dir: str) -> dict[int, int]:
-    """Counts launches per year in the published CSV, or {} if there isn't one.
+def published_launches(output_dir: str) -> list[PublishedLaunch]:
+    """Reads the launches in the published CSV, or [] if there isn't one.
 
     The committed CSV is the baseline the next run is checked against.
     """
     csv_path = os.path.join(output_dir, LAUNCHES_CSV)
     if not os.path.exists(csv_path):
-        return {}
-    years = pd.read_csv(csv_path, usecols=["Year"])["Year"]
-    return dict(Counter(int(year) for year in years))
+        return []
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        return [
+            PublishedLaunch(
+                date=datetime.date.fromisoformat(row["Date"]),
+                vehicle=row["Vehicle"],
+                payload=row["Payload"],
+                mass=int(row["Payload Mass (kg)"])
+                if row["Payload Mass (kg)"]
+                else None,
+            )
+            for row in csv.DictReader(f)
+        ]
 
 
 # Spreadsheets treat a cell starting with one of these as a formula

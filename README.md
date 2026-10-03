@@ -61,7 +61,8 @@ Downloaded pages are cached in `.cache/`, and Wikipedia is asked only for pages 
 The run fails with exit code 1, rather than publishing questionable graphs, when:
 
 - a page parses to no launches, or a past year has none;
-- a year has more than two fewer launches than the published CSV, which usually means part of a table stopped parsing;
+- a launch in the published CSV is missing, or its known mass has become unknown, which usually means part of a table stopped parsing;
+- the newest launch found is more than 30 days old, which usually means new launches have stopped parsing;
 - Wikipedia can't be reached and the cached pages are more than three days old, or there are no cached pages.
 
 A GitHub Actions workflow runs the script daily and commits any changed outputs, which keeps the graphs above current.

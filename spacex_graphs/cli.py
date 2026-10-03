@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 DATA_ERRORS = (
     validation.EmptyPageError,
     validation.MissingYearsError,
-    validation.LaunchCountDropError,
+    validation.PublishedLaunchesLostError,
+    validation.NoRecentLaunchesError,
     cache.FetchError,
     cache.StaleCacheError,
 )
@@ -104,7 +105,8 @@ def load_launch_records(
         logger.warning("Dropped %d launches dated after today", future)
 
     validation.check_year_coverage(records, today)
-    validation.check_launch_counts(records, output.published_launch_counts(output_dir))
+    validation.check_recent_launch(records, today)
+    validation.check_published_launches(records, output.published_launches(output_dir))
     return records
 
 

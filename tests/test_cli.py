@@ -16,6 +16,7 @@ import matplotlib.pyplot
 from spacex_graphs import cache, cli, output, validation
 from spacex_graphs.config import WIKIPEDIA_PAGES
 from spacex_graphs.parsing import LaunchRecord
+from spacex_graphs.validation import PublishedLaunch
 
 TODAY = datetime.date(2026, 10, 3)
 
@@ -25,8 +26,12 @@ def _launch(year, month=6, day=1, payload="Starlink", vehicle="Falcon 9"):
     return LaunchRecord(year, "LEO", payload, 1, when, vehicle)
 
 
-# One launch in every year the missing-year check expects, plus this year
-EVERY_YEAR = [_launch(year) for year in range(2012, TODAY.year + 1)]
+# One launch in every year the missing-year check expects, plus a recent one
+# this year, so the freshness check passes
+EVERY_YEAR = [
+    *[_launch(year) for year in range(2012, TODAY.year)],
+    _launch(TODAY.year, 10, 1),
+]
 
 
 class TestCodeVersion(unittest.TestCase):
@@ -75,7 +80,7 @@ class TestLoadLaunchRecords(unittest.TestCase):
                 cli, "_fetch_and_parse", lambda page, cache_dir: pages[page]
             ),
             mock.patch.object(
-                output, "published_launch_counts", return_value=published or {}
+                output, "published_launches", return_value=published or []
             ),
         ):
             return cli.load_launch_records(
@@ -114,9 +119,19 @@ class TestLoadLaunchRecords(unittest.TestCase):
 
     def test_current_year_may_be_empty(self):
         # Early January can legitimately have no launches yet
-        past_only = [r for r in EVERY_YEAR if r.year < TODAY.year]
-        records = self._load(self._pages(past_only, filler_year=2024))
-        self.assertNotIn(TODAY.year, {r.year for r in records})
+        today = datetime.date(2027, 1, 3)
+        past = [*[r for r in EVERY_YEAR if r.year < TODAY.year], _launch(2026, 12, 20)]
+        pages = self._pages(past, filler_year=2024)
+        with (
+            mock.patch.object(
+                cli, "_fetch_and_parse", lambda page, cache_dir: pages[page]
+            ),
+            mock.patch.object(output, "published_launches", return_value=[]),
+        ):
+            records = cli.load_launch_records(
+                today, cache_dir="unused", output_dir="unused"
+            )
+        self.assertNotIn(2027, {r.year for r in records})
 
     def test_launch_listed_on_two_pages_counts_once(self):
         with self.assertLogs(cli.logger, "WARNING") as logs:
@@ -124,9 +139,15 @@ class TestLoadLaunchRecords(unittest.TestCase):
         self.assertEqual(len(records), len(EVERY_YEAR))
         self.assertIn("more than one page", logs.output[0])
 
-    def test_year_losing_launches_since_last_publish_is_fatal(self):
-        with self.assertRaises(validation.LaunchCountDropError):
-            self._load(self._pages(EVERY_YEAR), published={2025: 50})
+    def test_published_launch_going_missing_is_fatal(self):
+        gone = PublishedLaunch(datetime.date(2025, 3, 3), "Falcon 9", "Gone", 1)
+        with self.assertRaises(validation.PublishedLaunchesLostError):
+            self._load(self._pages(EVERY_YEAR), published=[gone])
+
+    def test_no_recent_launch_is_fatal(self):
+        stale = [r for r in EVERY_YEAR if r.year < TODAY.year]
+        with self.assertRaises(validation.NoRecentLaunchesError):
+            self._load(self._pages(stale, filler_year=2024))
 
     def test_launches_after_today_are_dropped(self):
         planned = _launch(TODAY.year, 12, 24, payload="Planned")
