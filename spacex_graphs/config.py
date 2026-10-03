@@ -4,8 +4,11 @@ OUTPUT_DIR = "outputs"
 CACHE_DIR = ".cache"
 
 REQUEST_TIMEOUT = 10
+# Wikimedia's User-Agent policy asks automated clients to identify themselves
+# with a way to get in touch, and may block generic or spoofed browser UAs:
+# https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    "User-Agent": "spacex-graphs/1.0 (https://github.com/leepavelich/spacex-graphs)"
 }
 
 # Wikipedia pages listing SpaceX launches, mapped to short display names
