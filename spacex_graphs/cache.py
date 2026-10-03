@@ -239,5 +239,7 @@ def save_data_hash(
     code_version: str = "",
 ) -> None:
     """Records the data hash after outputs were generated successfully."""
-    with open(_hash_file_path(cache_dir), "w", encoding="utf-8") as f:
-        f.write(compute_data_hash(records, today, code_version))
+    _write_atomically(
+        _hash_file_path(cache_dir),
+        compute_data_hash(records, today, code_version).encode(),
+    )

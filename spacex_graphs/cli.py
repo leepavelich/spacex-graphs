@@ -212,3 +212,7 @@ def main() -> None:
     except DATA_ERRORS as error:
         logger.error("ERROR: %s", error)
         sys.exit(1)
+    except OSError as error:
+        # Usually a permissions problem with the output or cache directory
+        logger.error("ERROR: could not write the outputs or cache: %s", error)
+        sys.exit(1)

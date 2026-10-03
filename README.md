@@ -28,6 +28,8 @@ The container runs as a user with ID 1000. On a Linux host where your user ID di
 docker compose run --rm --user "$(id -u):$(id -g)" graphs
 ```
 
+If a cache volume from before this option worked fails with a permission error, remove it once with `docker compose down -v`.
+
 ## Running locally
 
 You need Python 3.11 or newer.
@@ -52,7 +54,7 @@ With `--output`, the script writes three files to `outputs/`:
 
 - `payload_mass_to_orbit_by_year.svg`: a stacked bar chart of payload mass launched to each destination by year
 - `cumulative_payload_mass_to_orbit.svg`: a line chart of cumulative payload mass launched, from 2017 onwards
-- `spacex_launches.csv`: every parsed launch, with its raw and categorized orbit and its outcome. `Payload Mass (kg)` is the mass Wikipedia reports, blank when unknown or classified. `Counted Mass (kg)` is what the graphs sum, which is 0 for failed launches.
+- `spacex_launches.csv`: every parsed launch, with its raw and categorized orbit and its outcome. `Payload Mass (kg)` is the mass Wikipedia reports, blank when unknown or classified. `Counted Mass (kg)` is what the graphs sum, which is 0 for failed launches and for launches whose mass is unknown.
 
 Downloaded pages are cached in `.cache/`, and Wikipedia is asked only for pages that changed. If neither the launch data nor the date has changed since the last successful run, the script skips regenerating the outputs.
 
@@ -71,6 +73,7 @@ A GitHub Actions workflow runs the script daily and commits any changed outputs,
 - `config.py` — Wikipedia URLs, HTTP settings, orbit-category mapping
 - `cache.py` — HTTP caching (ETag/Last-Modified) and change detection
 - `parsing.py` — parses launch records from Wikipedia's HTML tables
+- `validation.py` — checks the parsed launches are complete enough to publish
 - `transform.py` — orbit categorization and DataFrame preparation
 - `plotting.py` — builds the matplotlib figures
 - `output.py` — writes the SVG and CSV files

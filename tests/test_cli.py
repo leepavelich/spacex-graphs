@@ -167,6 +167,18 @@ class TestLoadLaunchRecords(unittest.TestCase):
                 cli.main()
             self.assertEqual(ctx.exception.code, 1)
 
+    def test_file_system_errors_get_a_one_line_message(self):
+        with (
+            mock.patch.object(cli, "run", side_effect=PermissionError("denied")),
+            mock.patch("sys.argv", ["graphs.py", "--output"]),
+            mock.patch("spacex_graphs.cli.logging.basicConfig"),
+            self.assertRaises(SystemExit) as ctx,
+            self.assertLogs(cli.logger, "ERROR") as logs,
+        ):
+            cli.main()
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("could not write the outputs or cache: denied", logs.output[0])
+
     def test_display_without_a_display_is_a_usage_error(self):
         # Tests run with the file-only Agg backend, like a container or CI
         with (

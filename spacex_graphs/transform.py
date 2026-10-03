@@ -95,7 +95,7 @@ def chart_caption(df: pd.DataFrame) -> str:
     launches = "launch" if unknown == 1 else "launches"
     return (
         f"Source: Wikipedia launch lists (CC BY-SA 4.0), launches through "
-        f"{latest:%-d %B %Y}. {unknown} successful {launches} with unknown or "
+        f"{latest.day} {latest:%B %Y}. {unknown} successful {launches} with unknown or "
         "classified payload mass count as 0 kg."
     )
 

@@ -18,12 +18,14 @@ COPY requirements.txt .
 RUN pip install --require-hashes -r requirements.txt
 
 # Run as an unprivileged user. The directories it writes are open to any user
-# ID (with the sticky bit, like /tmp), so `--user "$(id -u):$(id -g)"` works
-# too; a new cache volume copies these permissions when Docker creates it.
+# ID, so `--user "$(id -u):$(id -g)"` works too, even on a cache volume that
+# another user ID wrote to: every cache file is replaced by renaming a new
+# file over it, which needs only write access to the directory. A new cache
+# volume copies these permissions when Docker creates it.
 RUN useradd --create-home --uid 1000 app \
     && mkdir -p outputs .cache \
     && chown app:app outputs .cache \
-    && chmod 1777 outputs .cache
+    && chmod 0777 outputs .cache
 
 COPY graphs.py .
 COPY spacex_graphs/ ./spacex_graphs/
