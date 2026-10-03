@@ -26,9 +26,7 @@ def _figure():
 
 def _render_svgs(directory):
     figs = (_figure(), _figure())
-    with mock.patch.object(output, "OUTPUT_DIR", directory), mock.patch.object(
-        output.cache, "write_last_run_date"
-    ):
+    with mock.patch.object(output, "OUTPUT_DIR", directory):
         output.save_plots(*figs)
     plt.close("all")
     contents = {}

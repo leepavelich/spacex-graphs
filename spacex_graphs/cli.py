@@ -19,15 +19,14 @@ class EmptyPageError(RuntimeError):
 
 def _fetch_and_parse(url):
     """Fetches one page (using the HTTP cache) and parses its launch records."""
-    content, not_modified = cache.fetch_with_cache(url)
-    records = parse_launch_page(url, content)
-    return records, not_modified
+    content, _ = cache.fetch_with_cache(url)
+    return parse_launch_page(url, content)
 
 
 def load_launch_records():
     """Fetches and parses all Wikipedia pages concurrently.
 
-    Returns (records, all_pages_unchanged). Raises EmptyPageError if any page
+    Returns the combined records. Raises EmptyPageError if any page
     parses to zero records, which almost always means Wikipedia changed the
     table layout; continuing would publish graphs with that page's launches
     silently missing.
@@ -38,7 +37,7 @@ def load_launch_records():
 
     empty_pages = [
         WIKIPEDIA_PAGES[url]
-        for url, (page_records, _) in zip(WIKIPEDIA_PAGES, results)
+        for url, page_records in zip(WIKIPEDIA_PAGES, results)
         if not page_records
     ]
     if empty_pages:
@@ -48,9 +47,7 @@ def load_launch_records():
             + " (has the Wikipedia table layout changed?)"
         )
 
-    records = [record for page_records, _ in results for record in page_records]
-    all_unchanged = all(not_modified for _, not_modified in results)
-    return records, all_unchanged
+    return [record for page_records in results for record in page_records]
 
 
 def run(save_output):
@@ -58,22 +55,19 @@ def run(save_output):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(CACHE_DIR, exist_ok=True)
 
-    records, all_unchanged = load_launch_records()
-
-    # When saving, skip regeneration if nothing changed since the last run
-    if save_output:
-        if all_unchanged and cache.has_previous_run():
-            print("All pages cached and data unchanged - skipping processing")
-            return
-        if not cache.has_data_changed(records):
-            print("No changes detected in launch data - skipping graph regeneration")
-            # Still update the date file so we know we checked today
-            cache.write_last_run_date()
-            return
-
     # Launch times are UTC, so "today" (where the current year's line ends)
     # is the UTC date too; computed once here so the transforms stay pure
     today = datetime.datetime.now(datetime.timezone.utc).date()
+    records = load_launch_records()
+
+    # When saving, skip regeneration if neither the data nor the date changed
+    # since the last successful run. Parsing is cheap, so this always parses
+    # rather than trusting HTTP 304s, which can't see a new day.
+    if save_output and not cache.has_data_changed(records, today):
+        print("No changes detected in launch data - skipping graph regeneration")
+        cache.write_last_run_date(today)
+        return
+
     df = transform.build_dataframe(records)
     fig_by_year = plotting.plot_payload_mass_to_orbit_by_year(
         transform.payload_mass_by_year_orbit(df)
@@ -85,7 +79,8 @@ def run(save_output):
     if save_output:
         output.save_plots(fig_by_year, fig_cumulative)
         output.save_launches_csv(df)
-        cache.save_data_hash(records)
+        cache.save_data_hash(records, today)
+        cache.write_last_run_date(today)
         print("Graphs updated successfully")
     else:
         plt.show()

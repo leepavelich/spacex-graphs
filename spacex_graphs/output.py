@@ -5,7 +5,6 @@ import os
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from spacex_graphs import cache
 from spacex_graphs.config import OUTPUT_DIR
 
 
@@ -28,7 +27,6 @@ def save_plots(fig_by_year, fig_cumulative):
     """Saves the plots as SVG files, byte-identical for identical figures."""
     _save_svg(fig_by_year, "payload_mass_to_orbit_by_year.svg")
     _save_svg(fig_cumulative, "cumulative_payload_mass_to_orbit.svg")
-    cache.write_last_run_date()
 
 
 def save_launches_csv(df):

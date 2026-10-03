@@ -1,6 +1,5 @@
 """HTTP caching (ETag/Last-Modified) and change detection for launch data."""
 
-import datetime
 import hashlib
 import json
 import os
@@ -94,22 +93,20 @@ def _hash_file_path():
     return os.path.join(CACHE_DIR, "data_hash.txt")
 
 
-def has_previous_run():
-    """Returns True if a data hash from a previous run exists."""
-    return os.path.exists(_hash_file_path())
+def compute_data_hash(records, today):
+    """Hashes the launch data together with today's date.
 
-
-def compute_data_hash(records):
-    """Computes a hash of the launch data and current date for change detection."""
-    # Include current date since graphs extend to today
-    current_date = datetime.date.today().isoformat()
+    The date is included because the cumulative graph's current-year line
+    extends to today, so the outputs legitimately change once per day even
+    when no launch data does.
+    """
     data_str = json.dumps(sorted(records), sort_keys=True, default=str)
-    combined = f"{current_date}:{data_str}"
+    combined = f"{today.isoformat()}:{data_str}"
     return hashlib.sha256(combined.encode()).hexdigest()
 
 
-def has_data_changed(records):
-    """Checks if data has changed since the last successful run.
+def has_data_changed(records, today):
+    """Checks if the outputs would differ from the last successful run.
 
     Does not update the stored hash; call save_data_hash once the outputs
     have been written, so a failed run is retried instead of skipped.
@@ -119,17 +116,17 @@ def has_data_changed(records):
         return True
     with open(hash_file, "r", encoding="utf-8") as f:
         old_hash = f.read().strip()
-    return old_hash != compute_data_hash(records)
+    return old_hash != compute_data_hash(records, today)
 
 
-def save_data_hash(records):
+def save_data_hash(records, today):
     """Records the data hash after outputs were generated successfully."""
     with open(_hash_file_path(), "w", encoding="utf-8") as f:
-        f.write(compute_data_hash(records))
+        f.write(compute_data_hash(records, today))
 
 
-def write_last_run_date():
+def write_last_run_date(today):
     """Records the date the graphs were last checked/generated."""
     date_file = os.path.join(CACHE_DIR, "last_run_date.txt")
     with open(date_file, "w", encoding="utf-8") as f:
-        f.write(datetime.date.today().isoformat())
+        f.write(today.isoformat())

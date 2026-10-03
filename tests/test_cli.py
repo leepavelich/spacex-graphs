@@ -18,7 +18,7 @@ class TestLoadLaunchRecords(unittest.TestCase):
         empty_url = list(WIKIPEDIA_PAGES)[-1]
 
         def fake_fetch_and_parse(url):
-            return ([] if url == empty_url else [RECORD]), False
+            return [] if url == empty_url else [RECORD]
 
         with mock.patch.object(cli, "_fetch_and_parse", fake_fetch_and_parse):
             with self.assertRaises(cli.EmptyPageError) as ctx:
@@ -26,12 +26,9 @@ class TestLoadLaunchRecords(unittest.TestCase):
         self.assertIn(WIKIPEDIA_PAGES[empty_url], str(ctx.exception))
 
     def test_all_pages_with_records_succeeds(self):
-        with mock.patch.object(
-            cli, "_fetch_and_parse", lambda url: ([RECORD], True)
-        ):
-            records, all_unchanged = cli.load_launch_records()
+        with mock.patch.object(cli, "_fetch_and_parse", lambda url: [RECORD]):
+            records = cli.load_launch_records()
         self.assertEqual(len(records), len(WIKIPEDIA_PAGES))
-        self.assertTrue(all_unchanged)
 
     def test_main_exits_nonzero_on_empty_page(self):
         with mock.patch.object(
