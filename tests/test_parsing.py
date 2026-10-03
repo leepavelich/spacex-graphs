@@ -10,6 +10,23 @@ from spacex_graphs.parsing import (
 )
 
 STARSHIP_URL = "https://en.wikipedia.org/wiki/List_of_Starship_launches"
+FALCON_URL = "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches"
+
+
+def _falcon_row(date, booster, payload, mass, orbit, outcome):
+    """Builds a Falcon 9/Heavy table row with the live 9-column layout."""
+    cells = [
+        date,
+        booster,
+        "CCSFS, SLC-40",
+        payload,
+        mass,
+        orbit,
+        "SpaceX",
+        outcome,
+        "Success (ASOG)",
+    ]
+    return "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
 
 
 def _starship_row(date, ship, payload, mass, orbit, outcome):
@@ -61,6 +78,18 @@ class TestParseLaunchDatetime(unittest.TestCase):
 
     def test_unparseable_returns_none(self):
         self.assertIsNone(parse_launch_datetime("TBD"))
+
+    def test_date_shaped_but_invalid_returns_none(self):
+        # Each matches the date regex but used to raise ValueError and abort the run
+        for text in (
+            "31 February 2026",
+            "Mid 2026 to 2027",
+            "TBD 12 2026",
+            "4 juin 2010",
+            "1 May 2024 24:00",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_launch_datetime(text))
 
 
 class TestParsePayloadMassText(unittest.TestCase):
@@ -132,6 +161,71 @@ class TestParseStarshipRow(unittest.TestCase):
     def test_unexpected_column_count_is_skipped(self):
         html = _starship_table("<tr><td>September 2026</td><td>Block 3</td></tr>")
         self.assertEqual(parse_launch_page(STARSHIP_URL, html), [])
+
+
+class TestParseFalconPage(unittest.TestCase):
+    def _parse(self, *rows):
+        return parse_launch_page(FALCON_URL, _starship_table(*rows))
+
+    def test_successful_falcon_9_launch(self):
+        (record,) = self._parse(
+            _falcon_row(
+                "3 January 2025 01:27",
+                "F9 B5 B1086.2",
+                "Starlink Group 6-71",
+                "17,400 kg (38,400 lb)",
+                "LEO",
+                "Success",
+            )
+        )
+        self.assertEqual(record.vehicle, "Falcon 9")
+        self.assertEqual(record.payload, "Starlink Group 6-71")
+        self.assertEqual(record.payload_mass, 17400)
+        self.assertEqual(record.orbit, "LEO")
+        self.assertEqual(record.launch_datetime, datetime.datetime(2025, 1, 3, 1, 27))
+
+    def test_falcon_heavy_detected_from_booster(self):
+        (record,) = self._parse(
+            _falcon_row(
+                "29 December 2023 01:07",
+                "Falcon Heavy B5 B1084",
+                "USSF-52",
+                "Classified",
+                "HEO",
+                "Success",
+            )
+        )
+        self.assertEqual(record.vehicle, "Falcon Heavy")
+        self.assertEqual(record.payload_mass, 0)
+
+    def test_failed_launch_counts_no_mass(self):
+        (record,) = self._parse(
+            _falcon_row(
+                "12 July 2024 02:35",
+                "F9 B5 B1069.17",
+                "Starlink Group 9-3",
+                "~16,000 kg",
+                "LEO",
+                "Failure",
+            )
+        )
+        self.assertEqual(record.payload_mass, 0)
+
+    def test_payload_continuation_and_planned_rows_skipped(self):
+        records = self._parse(
+            _falcon_row("3 January 2025", "F9", "Starlink", "1 kg", "LEO", "Success"),
+            "<tr><td>Description of the payload above.</td></tr>",
+            # Future launches live in a 6-column table and must not be counted
+            "<tr>" + "<td>x</td>" * 6 + "</tr>",
+        )
+        self.assertEqual(len(records), 1)
+
+    def test_invalid_date_row_is_skipped_not_fatal(self):
+        records = self._parse(
+            _falcon_row("31 February 2026", "F9", "Bad", "1 kg", "LEO", "Success"),
+            _falcon_row("1 March 2026", "F9", "Good", "2 kg", "LEO", "Success"),
+        )
+        self.assertEqual([r.payload for r in records], ["Good"])
 
 
 if __name__ == "__main__":

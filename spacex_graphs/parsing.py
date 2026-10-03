@@ -22,7 +22,9 @@ def parse_launch_datetime(text) -> Optional[datetime.datetime]:
     """Parses a launch date/time from a Wikipedia date cell.
 
     Handles "26 August 2025", "August 26, 2025", with an optional "HH:MM" time
-    anywhere in the cell. Returns None if no date is found.
+    anywhere in the cell. Returns None if no valid date is found, including
+    when the cell looks like a date but isn't one (e.g. "Mid 2026 to 2027",
+    "31 February 2026"), so one malformed cell can't abort the whole run.
     """
     date_match = re.search(r"(\d{1,2})\s+(\w+)\s*(\d{4})", text)
     if date_match:
@@ -33,16 +35,18 @@ def parse_launch_datetime(text) -> Optional[datetime.datetime]:
             return None
         month_name, day, year = alt_match.groups()
 
-    month = datetime.datetime.strptime(month_name[:3], "%b").month
-    date = datetime.date(int(year), month, int(day))
-
     time_match = re.search(r"(\d{2}):(\d{2})", text)
     if time_match:
         hour, minute = (int(part) for part in time_match.groups())
     else:
         hour = minute = 0
 
-    return datetime.datetime.combine(date, datetime.time(hour, minute))
+    try:
+        month = datetime.datetime.strptime(month_name[:3], "%b").month
+        date = datetime.date(int(year), month, int(day))
+        return datetime.datetime.combine(date, datetime.time(hour, minute))
+    except ValueError:
+        return None
 
 
 def parse_payload_mass_text(text) -> int:
