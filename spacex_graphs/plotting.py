@@ -28,6 +28,7 @@ ORBIT_COLORS = {
 # HIGHLIGHT_FROM_YEAR, and any beyond the eight most recent, fold into one
 # muted context group rather than reusing or inventing hues.
 YEAR_COLORS = [
+    "#e34948",  # red: the current year
     "#2a78d6",  # blue
     "#eb6834",  # orange
     "#1baf7a",  # aqua
@@ -35,7 +36,6 @@ YEAR_COLORS = [
     "#e87ba4",  # magenta
     "#008300",  # green
     "#4a3aa7",  # violet
-    "#e34948",  # red
 ]
 OLDER_YEARS_COLOR = "#898781"
 
