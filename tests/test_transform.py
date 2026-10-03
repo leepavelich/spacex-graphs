@@ -266,7 +266,7 @@ class TestChartCaption(unittest.TestCase):
             ]
         )
         caption = chart_caption(df)
-        self.assertIn("Wikipedia", caption)
+        self.assertIn("Wikipedia contributors", caption)
         self.assertIn("CC BY-SA 4.0", caption)
         self.assertIn("through 2 September 2026", caption)
         self.assertIn("1 successful launch with unknown", caption)

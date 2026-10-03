@@ -101,6 +101,10 @@ Dependencies are declared in `requirements.in` and `requirements-dev.in` and loc
 
 Leave regenerating `outputs/` to the scheduled workflow: SVGs rendered on other platforms differ slightly from CI's even for the same data.
 
+## License
+
+The code is released under the [MIT License](LICENSE). The graphs and CSV in `outputs/` are adapted from Wikipedia content by Wikipedia contributors, so they are licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) instead; [outputs/README.md](outputs/README.md) has the attribution. The test fixtures are Wikipedia excerpts under the same license, as [tests/fixtures/README.md](tests/fixtures/README.md) notes.
+
 ## Contributing
 
 Contributions are welcome. [AGENTS.md](AGENTS.md) describes the project's design rules and conventions, for people and coding agents alike: Conventional Commits, rebasing branches rather than merging `main`, and attaching before-and-after renders when a change alters the graphs.
