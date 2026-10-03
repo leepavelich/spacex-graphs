@@ -149,14 +149,21 @@ def plot_cumulative_payload_mass_to_orbit(
         "Cumulative Payload Mass (kg)",
     )
     sorted_years = sorted(cumulative["Year"].unique(), reverse=True)
-    highlighted_years = [y for y in sorted_years if y >= HIGHLIGHT_FROM_YEAR]
-    # Not strict: highlighted years beyond the palette deliberately fall through
-    year_color_map = dict(zip(highlighted_years, YEAR_COLORS, strict=False))
+    # Colors follow each year's distance from today, so the current year is
+    # always red, even in early January before its first launch (when red is
+    # simply unused). Years past the palette, or before HIGHLIGHT_FROM_YEAR,
+    # fall through to the grey group.
+    year_color_map = {
+        year: YEAR_COLORS[today.year - year]
+        for year in sorted_years
+        if year >= HIGHLIGHT_FROM_YEAR and 0 <= today.year - year < len(YEAR_COLORS)
+    }
     older_years = [y for y in sorted_years if y not in year_color_map]
-    if len(older_years) == 1:
-        older_label = str(older_years[0])
-    elif older_years:
-        older_label = f"{min(older_years)}–{max(older_years)}"
+    older_label = (
+        f"{min(older_years)}–{max(older_years)}"
+        if len(older_years) > 1
+        else "".join(map(str, older_years))
+    )
 
     for year, points in cumulative.groupby("Year"):
         if year in year_color_map:
