@@ -21,14 +21,13 @@ WIKIPEDIA_PAGES = {
 # The cumulative graph only shows years from this one onwards
 MIN_CUMULATIVE_YEAR = 2017
 
-# Maps raw Wikipedia orbit descriptions to standardized categories
+# Maps raw Wikipedia orbit descriptions to standardized categories. Footnote
+# markers like "[338]" are stripped before lookup, so keys never include them.
 ORBIT_MAPPING = {
     "Ballistic lunar transfer (BLT)": "BLT",
+    "BLT": "BLT",
     "GEO": "GTO/GEO",
     "GTO": "GTO/GEO",
-    "GTO[338]": "GTO/GEO",
-    "GTO[356]": "GTO/GEO",
-    "GTO[399]": "GTO/GEO",
     "HEO for P/2 orbit": "Other",
     "Heliocentric": "Heliocentric",
     "Heliocentric0.99–1.67 AU(close to Mars transfer orbit)": "Heliocentric",
@@ -36,7 +35,6 @@ ORBIT_MAPPING = {
     "LEO (ISS)": "LEO (Other)",
     "LEO (Starlink)": "LEO (Starlink)",
     "LEO / MEO": "Other",
-    "LEO[172]": "LEO (Other)",
     "MEO": "MEO",
     "Polar LEO": "LEO (Other)",
     "Polar orbit LEO": "LEO (Other)",

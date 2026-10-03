@@ -22,17 +22,20 @@ ORBIT_COLORS = {
     "Other": "lightgray",
 }
 
-# Most recent years get the first colors
+# Most recent years get the first colors. This eight-hue order is validated
+# for colorblind-safe separation between adjacent slots; older years fold
+# into one muted context group rather than reusing or inventing hues.
 YEAR_COLORS = [
-    "red",
-    "green",
-    "blue",
-    "orange",
-    "purple",
-    "pink",
-    "lightblue",
-    "lightgreen",
+    "#2a78d6",  # blue
+    "#eb6834",  # orange
+    "#1baf7a",  # aqua
+    "#eda100",  # yellow
+    "#e87ba4",  # magenta
+    "#008300",  # green
+    "#4a3aa7",  # violet
+    "#e34948",  # red
 ]
+OLDER_YEARS_COLOR = "#898781"
 
 
 def create_figure(title, xlabel, ylabel, size=(10, 7)):
@@ -97,18 +100,29 @@ def plot_cumulative_payload_mass_to_orbit(df_filtered):
 
     sorted_years = sorted(df_extended["Year"].unique(), reverse=True)
     year_color_map = dict(zip(sorted_years, YEAR_COLORS))
+    older_years = sorted_years[len(YEAR_COLORS) :]
+    if len(older_years) == 1:
+        older_label = str(older_years[0])
+    elif older_years:
+        older_label = f"{min(older_years)}–{max(older_years)}"
 
     for year, group_data in df_extended.groupby("Year"):
         group_data = group_data.sort_values("DateTime")
         group_data["DayOfYear"] = group_data["DateTime"].dt.dayofyear
         cumulative_mass = group_data["PayloadMass"].cumsum()
 
+        if year in year_color_map:
+            style = {"label": str(year), "color": year_color_map[year]}
+        else:
+            # Only the newest of the older years carries the shared legend entry
+            label = older_label if year == older_years[0] else "_nolegend_"
+            style = {"label": label, "color": OLDER_YEARS_COLOR, "linewidth": 1}
+
         ax.plot(
             group_data["DayOfYear"],
             cumulative_mass,
-            label=str(year),
-            color=year_color_map.get(year, "grey"),
             drawstyle="steps-post",
+            **style,
         )
 
     ax.legend(title="Year", loc="upper left")
