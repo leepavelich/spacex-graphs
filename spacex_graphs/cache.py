@@ -28,10 +28,17 @@ def fetch_with_cache(url):
     cache_meta_path, cache_content_path = _cache_paths(url)
     page_name = WIKIPEDIA_PAGES.get(url, url)
 
+    has_cached_content = os.path.exists(cache_content_path)
+
     cached_meta = {}
-    if os.path.exists(cache_meta_path):
-        with open(cache_meta_path, "r", encoding="utf-8") as f:
-            cached_meta = json.load(f)
+    # Only send validators when the body they describe is on disk; otherwise a
+    # 304 would leave nothing to return
+    if has_cached_content and os.path.exists(cache_meta_path):
+        try:
+            with open(cache_meta_path, "r", encoding="utf-8") as f:
+                cached_meta = json.load(f)
+        except (OSError, ValueError):
+            cached_meta = {}
 
     request_headers = HEADERS.copy()
     if "etag" in cached_meta:
@@ -39,9 +46,18 @@ def fetch_with_cache(url):
     if "last-modified" in cached_meta:
         request_headers["If-Modified-Since"] = cached_meta["last-modified"]
 
-    response = requests.get(url, headers=request_headers, timeout=REQUEST_TIMEOUT)
+    try:
+        response = requests.get(
+            url, headers=request_headers, timeout=REQUEST_TIMEOUT
+        )
+    except requests.RequestException as error:
+        if not has_cached_content:
+            raise
+        print(f"  ! {page_name} (using cached - {type(error).__name__})")
+        with open(cache_content_path, "rb") as f:
+            return f.read(), False
 
-    if response.status_code == 304 and os.path.exists(cache_content_path):
+    if response.status_code == 304 and has_cached_content:
         print(f"  ✓ {page_name} (cached)")
         with open(cache_content_path, "rb") as f:
             return f.read(), True
@@ -61,14 +77,17 @@ def fetch_with_cache(url):
 
         return response.content, False
 
-    # Fallback to cached content if the request failed but a cache exists
-    if os.path.exists(cache_content_path):
+    # Fallback to cached content if the server returned an error status
+    if has_cached_content:
         print(f"  ! {page_name} (using cached - request failed)")
         with open(cache_content_path, "rb") as f:
             return f.read(), False
 
     response.raise_for_status()
-    return response.content, False
+    # Not an error status, but not usable either (e.g. a 304 with no cached body)
+    raise requests.HTTPError(
+        f"Unexpected HTTP {response.status_code} for {url}", response=response
+    )
 
 
 def _hash_file_path():
