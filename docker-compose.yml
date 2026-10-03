@@ -5,5 +5,9 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./outputs:/app/outputs
-      - ./.cache:/app/.cache
-    command: ${ARGS:-}
+      # A named volume, so the unprivileged container user owns it even on
+      # Linux hosts where Docker would create a missing bind-mount dir as root
+      - cache:/app/.cache
+
+volumes:
+  cache:
