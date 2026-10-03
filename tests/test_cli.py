@@ -12,7 +12,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot
 
-from spacex_graphs import cache, cli, output
+from spacex_graphs import cache, cli, output, validation
 from spacex_graphs.config import WIKIPEDIA_PAGES
 from spacex_graphs.parsing import LaunchRecord
 
@@ -29,9 +29,15 @@ EVERY_YEAR = [_launch(year) for year in range(2012, TODAY.year + 1)]
 
 
 class TestLoadLaunchRecords(unittest.TestCase):
-    def _load(self, pages):
-        """Loads with each page URL mapped to the records it should parse to."""
-        with mock.patch.object(cli, "_fetch_and_parse", lambda url: pages[url]):
+    def _load(self, pages, published=None):
+        """Loads with each page URL mapped to the records it should parse to,
+        checked against the given published counts (none by default)."""
+        with (
+            mock.patch.object(cli, "_fetch_and_parse", lambda url: pages[url]),
+            mock.patch.object(
+                output, "published_launch_counts", return_value=published or {}
+            ),
+        ):
             return cli.load_launch_records(TODAY)
 
     @staticmethod
@@ -47,7 +53,7 @@ class TestLoadLaunchRecords(unittest.TestCase):
         pages = self._pages(EVERY_YEAR)
         empty_url = list(WIKIPEDIA_PAGES)[-1]
         pages[empty_url] = []
-        with self.assertRaises(cli.EmptyPageError) as ctx:
+        with self.assertRaises(validation.EmptyPageError) as ctx:
             self._load(pages)
         self.assertIn(WIKIPEDIA_PAGES[empty_url], str(ctx.exception))
 
@@ -58,7 +64,7 @@ class TestLoadLaunchRecords(unittest.TestCase):
     def test_missing_past_year_is_fatal(self):
         # As if Wikipedia split 2025 out into a page this project doesn't fetch
         without_2025 = [r for r in EVERY_YEAR if r.year != 2025]
-        with self.assertRaises(cli.MissingYearsError) as ctx:
+        with self.assertRaises(validation.MissingYearsError) as ctx:
             self._load(self._pages(without_2025))
         self.assertIn("2025", str(ctx.exception))
 
@@ -74,6 +80,10 @@ class TestLoadLaunchRecords(unittest.TestCase):
         self.assertEqual(len(records), len(EVERY_YEAR))
         self.assertIn("more than one page", logs.output[0])
 
+    def test_year_losing_launches_since_last_publish_is_fatal(self):
+        with self.assertRaises(validation.LaunchCountDropError):
+            self._load(self._pages(EVERY_YEAR), published={2025: 50})
+
     def test_launches_after_today_are_dropped(self):
         planned = _launch(TODAY.year, 12, 24, payload="Planned")
         with self.assertLogs(cli.logger, "WARNING") as logs:
@@ -84,7 +94,7 @@ class TestLoadLaunchRecords(unittest.TestCase):
     def test_main_exits_nonzero_on_empty_page(self):
         with (
             mock.patch.object(
-                cli, "run", side_effect=cli.EmptyPageError("no launches parsed")
+                cli, "run", side_effect=validation.EmptyPageError("no launches parsed")
             ),
             mock.patch("sys.argv", ["graphs.py", "--output"]),
             # main() configures the root logger; keep that out of other tests
@@ -98,7 +108,7 @@ class TestLoadLaunchRecords(unittest.TestCase):
 
     def test_main_exits_nonzero_on_every_data_error(self):
         for error in (
-            cli.MissingYearsError("no launches found for 2025"),
+            validation.MissingYearsError("no launches found for 2025"),
             cache.FetchError("Falcon current could not be fetched"),
             cache.StaleCacheError("Falcon current could not be fetched"),
         ):

@@ -201,26 +201,6 @@ def _parse_starship_row(cols: Sequence[Tag]) -> LaunchRecord | None:
     )
 
 
-def drop_duplicate_launches(
-    records: Sequence[LaunchRecord],
-) -> tuple[list[LaunchRecord], int]:
-    """Removes launches listed more than once, keeping the first listing.
-
-    When Wikipedia splits a year out of the current list, both pages can list
-    the same launches for a while. A vehicle can't launch twice at the same
-    minute, so launch time and vehicle identify a launch. Returns the unique
-    records and how many duplicates were dropped.
-    """
-    seen: set[tuple[datetime.datetime, str]] = set()
-    unique = []
-    for record in records:
-        key = (record.launch_datetime, record.vehicle)
-        if key not in seen:
-            seen.add(key)
-            unique.append(record)
-    return unique, len(records) - len(unique)
-
-
 def parse_launch_page(url: str, content: bytes | str) -> list[LaunchRecord]:
     """Parses all launch records from a Wikipedia launch-list page."""
     parse_row: Callable[[Sequence[Tag]], LaunchRecord | None] = (

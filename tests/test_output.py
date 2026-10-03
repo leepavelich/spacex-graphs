@@ -120,5 +120,23 @@ class TestSaveLaunchesCsv(unittest.TestCase):
         self.assertEqual(rows[2]["Counted Mass (kg)"], "0")
 
 
+class TestPublishedLaunchCounts(unittest.TestCase):
+    def test_counts_rows_per_year_in_the_published_csv(self):
+        df = build_dataframe(
+            [
+                LaunchRecord(2025, "LEO", "A", 1, datetime.datetime(2025, 1, 1), "F9"),
+                LaunchRecord(2025, "LEO", "B", 1, datetime.datetime(2025, 2, 1), "F9"),
+                LaunchRecord(2026, "LEO", "C", 1, datetime.datetime(2026, 1, 1), "F9"),
+            ]
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(output, "OUTPUT_DIR", directory),
+        ):
+            self.assertEqual(output.published_launch_counts(), {})
+            output.save_launches_csv(df)
+            self.assertEqual(output.published_launch_counts(), {2025: 2, 2026: 1})
+
+
 if __name__ == "__main__":
     unittest.main()

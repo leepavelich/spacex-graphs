@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository. It covers only what the c
 
 ## Design rules
 
-- Keep the module layering `config` → `cache` → `parsing` → `transform` → `plotting` → `output` → `cli`: each module imports only modules to its left, and I/O happens only in `cache`, `output`, and `cli`. Nothing runs at import time. This keeps parsing and transforms pure and testable without mocks.
+- Keep the module layering `config` → `cache` → `parsing` → `validation` → `transform` → `plotting` → `output` → `cli`: each module imports only modules to its left, and I/O happens only in `cache`, `output`, and `cli`. Nothing runs at import time. This keeps parsing and transforms pure and testable without mocks.
 - Parsing and transform functions take everything they need as arguments, including the date: `cli.run` computes today's UTC date once and passes it down. Launch times on Wikipedia are UTC, so "today" is too.
 - Identical data must produce byte-identical SVGs, which is why they are saved with no timestamp and a fixed `svg.hashsalt`. The scheduled workflow commits only files that changed, so any nondeterminism becomes a noisy daily commit.
 - The change-detection hash includes today's date on purpose: the cumulative chart's current-year line extends to today, so the graphs legitimately change once a day.
@@ -13,7 +13,8 @@ Guidance for coding agents working in this repository. It covers only what the c
 - Leave committing `outputs/` to the scheduled workflow. Font metrics differ by platform, so an SVG rendered on macOS differs byte for byte from CI's even for identical data.
 - `config.ORBIT_CATEGORIES` is the one list of orbit categories. A new `ORBIT_MAPPING` value must be in it and get a color in `plotting.py`; the tests check both, and the bar chart refuses a category it can't color rather than dropping its mass.
 - Records keep what Wikipedia reports: the outcome text, and the mass or `None` when there isn't one. Whether a launch's mass counts in the graphs is decided only by `transform.launch_succeeded`, so keep that policy out of the parsers.
-- Data that can't be trusted raises one of the errors in `cli.DATA_ERRORS`, which exit with code 1 and a one-line message. Add new data-validity failures there rather than logging a warning, so the daily job goes red instead of publishing.
+- Data that can't be trusted raises one of the errors in `cli.DATA_ERRORS`, which exit with code 1 and a one-line message. Put new completeness checks in `validation.py` as pure functions and add their errors there, rather than logging a warning, so the daily job goes red instead of publishing.
+- The committed `outputs/spacex_launches.csv` is also the baseline for `validation.check_launch_counts`: a year with more than `MAX_LAUNCH_COUNT_DROP` fewer launches than it fails the run. If Wikipedia really does remove launches, regenerate the outputs deliberately rather than raising the limit.
 - In the cumulative chart, the current year is red and years before `HIGHLIGHT_FROM_YEAR` (2020) are grey on purpose: their payload mass is tiny next to recent years.
 - Chart titles say "launched", not "to orbit", because the totals include suborbital (Transatmospheric) payloads.
 

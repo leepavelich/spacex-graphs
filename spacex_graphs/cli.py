@@ -9,35 +9,19 @@ from concurrent.futures import ThreadPoolExecutor
 
 import matplotlib.pyplot as plt
 
-from spacex_graphs import cache, output, plotting, transform
-from spacex_graphs.config import (
-    CACHE_DIR,
-    FIRST_CONTINUOUS_YEAR,
-    OUTPUT_DIR,
-    WIKIPEDIA_PAGES,
-)
-from spacex_graphs.parsing import (
-    LaunchRecord,
-    drop_duplicate_launches,
-    parse_launch_page,
-)
+from spacex_graphs import cache, output, plotting, transform, validation
+from spacex_graphs.config import CACHE_DIR, OUTPUT_DIR, WIKIPEDIA_PAGES
+from spacex_graphs.parsing import LaunchRecord, parse_launch_page
 
 logger = logging.getLogger(__name__)
-
-
-class EmptyPageError(RuntimeError):
-    """Raised when a Wikipedia page yields no launch records."""
-
-
-class MissingYearsError(RuntimeError):
-    """Raised when past years that should have launches have none."""
 
 
 # Errors that mean the data can't be trusted: the run fails rather than
 # publishing graphs built from it
 DATA_ERRORS = (
-    EmptyPageError,
-    MissingYearsError,
+    validation.EmptyPageError,
+    validation.MissingYearsError,
+    validation.LaunchCountDropError,
     cache.FetchError,
     cache.StaleCacheError,
 )
@@ -54,50 +38,33 @@ def _fetch_and_parse(url: str) -> list[LaunchRecord]:
 
 
 def load_launch_records(today: datetime.date) -> list[LaunchRecord]:
-    """Fetches, parses, and checks the launches from all Wikipedia pages.
+    """Fetches and parses every Wikipedia page, then checks the result.
 
-    Raises EmptyPageError if any page parses to zero records, which almost
-    always means Wikipedia changed the table layout, and MissingYearsError if
-    a past year has no launches at all, which means a page is missing from
-    WIKIPEDIA_PAGES. Either would otherwise publish graphs with launches
-    silently missing. Launches listed twice or dated after today are dropped.
+    Raises one of the validation errors when the launches can't be trusted:
+    a page with no launches, a past year with none, or a year with far fewer
+    than were last published. Launches listed twice or dated after today are
+    dropped with a warning.
     """
     logger.info("Fetching Wikipedia pages:")
     with ThreadPoolExecutor(max_workers=5) as executor:
         results = list(executor.map(_fetch_and_parse, WIKIPEDIA_PAGES))
 
-    empty_pages = [
-        WIKIPEDIA_PAGES[url]
-        for url, page_records in zip(WIKIPEDIA_PAGES, results, strict=True)
-        if not page_records
-    ]
-    if empty_pages:
-        raise EmptyPageError(
-            "no launches parsed from: "
-            + ", ".join(empty_pages)
-            + " (has the Wikipedia table layout changed?)"
-        )
+    validation.check_pages_not_empty(
+        dict(zip(WIKIPEDIA_PAGES.values(), results, strict=True))
+    )
 
-    records, duplicates = drop_duplicate_launches(
+    records, duplicates = validation.drop_duplicate_launches(
         [record for page_records in results for record in page_records]
     )
     if duplicates:
         logger.warning("Dropped %d launches listed on more than one page", duplicates)
 
-    future = [r for r in records if r.launch_datetime.date() > today]
+    records, future = validation.drop_future_launches(records, today)
     if future:
-        logger.warning("Dropped %d launches dated after today", len(future))
-        records = [r for r in records if r.launch_datetime.date() <= today]
+        logger.warning("Dropped %d launches dated after today", future)
 
-    years = {record.year for record in records}
-    missing = [y for y in range(FIRST_CONTINUOUS_YEAR, today.year) if y not in years]
-    if missing:
-        raise MissingYearsError(
-            "no launches found for "
-            + ", ".join(map(str, missing))
-            + " (has Wikipedia moved them to a page not in WIKIPEDIA_PAGES?)"
-        )
-
+    validation.check_year_coverage(records, today)
+    validation.check_launch_counts(records, output.published_launch_counts())
     return records
 
 

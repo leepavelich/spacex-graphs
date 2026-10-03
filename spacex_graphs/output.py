@@ -2,6 +2,7 @@
 
 import logging
 import os
+from collections import Counter
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -46,6 +47,18 @@ def save_plots(fig_by_year: Figure, fig_cumulative: Figure) -> None:
     """Saves the plots as SVG files, byte-identical for identical figures."""
     _save_svg(fig_by_year, BY_YEAR_SVG)
     _save_svg(fig_cumulative, CUMULATIVE_SVG)
+
+
+def published_launch_counts() -> dict[int, int]:
+    """Counts launches per year in the published CSV, or {} if there isn't one.
+
+    The committed CSV is the baseline the next run is checked against.
+    """
+    csv_path = os.path.join(OUTPUT_DIR, LAUNCHES_CSV)
+    if not os.path.exists(csv_path):
+        return {}
+    years = pd.read_csv(csv_path, usecols=["Year"])["Year"]
+    return dict(Counter(int(year) for year in years))
 
 
 def save_launches_csv(df: pd.DataFrame) -> None:

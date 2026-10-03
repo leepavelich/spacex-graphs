@@ -33,6 +33,11 @@ STALE_CACHE_LIMIT = datetime.timedelta(days=3)
 # because Wikipedia split last year out of the current list into its own page.
 FIRST_CONTINUOUS_YEAR = 2012
 
+# A year may have at most this many fewer launches than the last published
+# CSV (allowing for the odd Wikipedia correction); more than that means part
+# of a page stopped parsing, and the run fails instead of publishing.
+MAX_LAUNCH_COUNT_DROP = 2
+
 # The cumulative graph only shows years from this one onwards
 MIN_CUMULATIVE_YEAR = 2017
 

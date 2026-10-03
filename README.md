@@ -56,7 +56,11 @@ With `--output`, the script writes three files to `outputs/`:
 
 Downloaded pages are cached in `.cache/`, and Wikipedia is asked only for pages that changed. If neither the launch data nor the date has changed since the last successful run, the script skips regenerating the outputs.
 
-The run fails with exit code 1, rather than publishing questionable graphs, when a page parses to no launches, a past year has no launches, or Wikipedia can't be reached and the cached pages are more than three days old.
+The run fails with exit code 1, rather than publishing questionable graphs, when:
+
+- a page parses to no launches, or a past year has none;
+- a year has more than two fewer launches than the published CSV, which usually means part of a table stopped parsing;
+- Wikipedia can't be reached and the cached pages are more than three days old, or there are no cached pages.
 
 A GitHub Actions workflow runs the script daily and commits any changed outputs, which keeps the graphs above current.
 
