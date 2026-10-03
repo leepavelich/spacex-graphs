@@ -42,6 +42,11 @@ class TestDataHash(unittest.TestCase):
         tomorrow = TODAY + datetime.timedelta(days=1)
         self.assertTrue(cache.has_data_changed(RECORDS, tomorrow))
 
+    def test_code_change_is_changed_even_with_identical_data(self):
+        cache.save_data_hash(RECORDS, TODAY, code_version="v1")
+        self.assertFalse(cache.has_data_changed(RECORDS, TODAY, code_version="v1"))
+        self.assertTrue(cache.has_data_changed(RECORDS, TODAY, code_version="v2"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,6 +2,7 @@
 
 import datetime
 import os
+import pathlib
 import tempfile
 import unittest
 from unittest import mock
@@ -26,6 +27,22 @@ def _launch(year, month=6, day=1, payload="Starlink", vehicle="Falcon 9"):
 
 # One launch in every year the missing-year check expects, plus this year
 EVERY_YEAR = [_launch(year) for year in range(2012, TODAY.year + 1)]
+
+
+class TestCodeVersion(unittest.TestCase):
+    def test_is_stable_and_tracks_the_source(self):
+        baseline = cli.code_version()
+        self.assertEqual(cli.code_version(), baseline)
+        real_read = pathlib.Path.read_bytes
+        with mock.patch(
+            "pathlib.Path.read_bytes", lambda path: real_read(path) + b"# edited"
+        ):
+            self.assertNotEqual(cli.code_version(), baseline)
+
+    def test_tracks_library_versions(self):
+        baseline = cli.code_version()
+        with mock.patch("spacex_graphs.cli.metadata.version", return_value="99.0"):
+            self.assertNotEqual(cli.code_version(), baseline)
 
 
 class TestLoadLaunchRecords(unittest.TestCase):
@@ -177,7 +194,9 @@ class TestRun(unittest.TestCase):
     def test_first_save_writes_all_outputs(self):
         cli.run(save_output=True, today=TODAY)
         self.assertEqual(self._outputs(), OUTPUT_FILES)
-        self.assertFalse(cache.has_data_changed(self.records, TODAY))
+        self.assertFalse(
+            cache.has_data_changed(self.records, TODAY, cli.code_version())
+        )
         self.show.assert_not_called()
 
     def test_unchanged_rerun_skips_regeneration(self):
@@ -205,6 +224,14 @@ class TestRun(unittest.TestCase):
         cli.run(save_output=True, today=TODAY)
         self.assertGreater(os.path.getmtime(svg), 0)
 
+    def test_code_change_regenerates_on_the_same_day(self):
+        cli.run(save_output=True, today=TODAY)
+        svg = os.path.join(self.output_dir, OUTPUT_FILES[0])
+        os.utime(svg, (0, 0))
+        with mock.patch.object(cli, "code_version", return_value="changed"):
+            cli.run(save_output=True, today=TODAY)
+        self.assertGreater(os.path.getmtime(svg), 0)
+
     def test_display_mode_shows_and_writes_nothing(self):
         cli.run(save_output=False, today=TODAY)
         self.show.assert_called_once()
@@ -217,7 +244,7 @@ class TestRun(unittest.TestCase):
         ):
             cli.run(save_output=True, today=TODAY)
         # The hash wasn't recorded, so the next run regenerates
-        self.assertTrue(cache.has_data_changed(self.records, TODAY))
+        self.assertTrue(cache.has_data_changed(self.records, TODAY, cli.code_version()))
 
 
 if __name__ == "__main__":

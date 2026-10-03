@@ -191,21 +191,26 @@ def _hash_file_path() -> str:
     return os.path.join(CACHE_DIR, "data_hash.txt")
 
 
-def compute_data_hash(records: Iterable[tuple[Any, ...]], today: datetime.date) -> str:
-    """Hashes the launch records (any tuples) together with today's date.
+def compute_data_hash(
+    records: Iterable[tuple[Any, ...]], today: datetime.date, code_version: str = ""
+) -> str:
+    """Hashes the launch records (any tuples), today's date, and the code.
 
     The date is included because the cumulative graph's current-year line
     extends to today, so the outputs legitimately change once per day even
-    when no launch data does.
+    when no launch data does. code_version identifies the code and libraries
+    that render the outputs, so changing either regenerates them.
     """
     # Sort the serialized records: records themselves can't be ordered once a
     # field may be None
     data_str = json.dumps(sorted(json.dumps(r, default=str) for r in records))
-    combined = f"{today.isoformat()}:{data_str}"
+    combined = f"{today.isoformat()}:{code_version}:{data_str}"
     return hashlib.sha256(combined.encode()).hexdigest()
 
 
-def has_data_changed(records: Iterable[tuple[Any, ...]], today: datetime.date) -> bool:
+def has_data_changed(
+    records: Iterable[tuple[Any, ...]], today: datetime.date, code_version: str = ""
+) -> bool:
     """Checks if the outputs would differ from the last successful run.
 
     Does not update the stored hash; call save_data_hash once the outputs
@@ -216,13 +221,15 @@ def has_data_changed(records: Iterable[tuple[Any, ...]], today: datetime.date) -
         return True
     with open(hash_file, encoding="utf-8") as f:
         old_hash = f.read().strip()
-    return old_hash != compute_data_hash(records, today)
+    return old_hash != compute_data_hash(records, today, code_version)
 
 
-def save_data_hash(records: Iterable[tuple[Any, ...]], today: datetime.date) -> None:
+def save_data_hash(
+    records: Iterable[tuple[Any, ...]], today: datetime.date, code_version: str = ""
+) -> None:
     """Records the data hash after outputs were generated successfully."""
     with open(_hash_file_path(), "w", encoding="utf-8") as f:
-        f.write(compute_data_hash(records, today))
+        f.write(compute_data_hash(records, today, code_version))
 
 
 def write_last_run_date(today: datetime.date) -> None:

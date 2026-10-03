@@ -2,10 +2,13 @@
 
 import argparse
 import datetime
+import hashlib
 import logging
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from importlib import metadata
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 
@@ -39,6 +42,26 @@ def _fetch_and_parse(url: str) -> list[LaunchRecord]:
         url, lambda content: parse_launch_page(url, content)
     )
     return records
+
+
+# Libraries whose versions can change what the outputs look like
+_RENDERING_LIBRARIES = ("beautifulsoup4", "matplotlib", "numpy", "pandas")
+
+
+def code_version() -> str:
+    """Fingerprints the code and libraries that produce the outputs.
+
+    It goes into the change-detection hash, so a code change or a dependency
+    update regenerates the outputs on its next run instead of waiting for
+    the data or the date to change.
+    """
+    digest = hashlib.sha256()
+    for source in sorted(Path(__file__).parent.glob("*.py")):
+        digest.update(source.name.encode())
+        digest.update(source.read_bytes())
+    for library in _RENDERING_LIBRARIES:
+        digest.update(f"{library}=={metadata.version(library)}".encode())
+    return digest.hexdigest()[:16]
 
 
 def load_launch_records(today: datetime.date) -> list[LaunchRecord]:
@@ -93,7 +116,7 @@ def run(save_output: bool, today: datetime.date | None = None) -> None:
     if (
         save_output
         and not output.missing_outputs()
-        and not cache.has_data_changed(records, today)
+        and not cache.has_data_changed(records, today, code_version())
     ):
         logger.info("No changes detected in launch data - skipping graph regeneration")
         cache.write_last_run_date(today)
@@ -110,7 +133,7 @@ def run(save_output: bool, today: datetime.date | None = None) -> None:
     if save_output:
         output.save_plots(fig_by_year, fig_cumulative)
         output.save_launches_csv(df)
-        cache.save_data_hash(records, today)
+        cache.save_data_hash(records, today, code_version())
         cache.write_last_run_date(today)
         logger.info("Graphs updated successfully")
     else:
