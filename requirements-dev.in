@@ -5,4 +5,5 @@
 mypy==2.4.0
 pandas-stubs
 ruff==0.16.10
+uv==0.12.22
 types-requests
