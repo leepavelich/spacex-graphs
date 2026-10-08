@@ -715,7 +715,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2026-09-13,18:49:00,2026,Falcon 9,"O3b mPOWER 11, 12 & 13",5100,MEO,MEO,Success,5100
 2026-09-17,01:07:00,2026,Falcon 9,USSF-259 (SBST TH-1) (17 Starshield satellites),,Polar LEO,LEO (Other),Success,0
 2026-09-20,01:47:00,2026,Falcon 9,Starlink: Group 15-27,15525,LEO,LEO (Starlink),Success,15525
-2026-09-26,14:00:00,2026,Falcon 9,"USSF-385 (""R-3"") (~17 Starshield satellites)",,LEO,LEO (Other),Success,0
+2026-09-26,14:00:00,2026,Falcon 9,"USSF-385 (""R-3"") (23 Starshield satellites)",,LEO,LEO (Other),Success,0
 2026-09-28,12:48:00,2026,Block 3 Starship,Starlink: Group 31-1,44000,LEO,LEO (Starlink),Success,44000
 2026-10-01,15:10:00,2026,Falcon 9,Crew-13 (Crew Dragon C213-2 Grace),13000,LEO (ISS),LEO (Other),Success,13000
 2026-10-01,18:32:00,2026,Falcon 9,Transporter-18 (130 payloads smallsat rideshare),,SSO,SSO (Other),Success,0
