@@ -720,3 +720,4 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2026-10-01,15:10:00,2026,Falcon 9,Crew-13 (Crew Dragon C213-2 Grace),13000,LEO (ISS),LEO (Other),Success,13000
 2026-10-01,18:32:00,2026,Falcon 9,Transporter-18 (130 payloads smallsat rideshare),,SSO,SSO (Other),Success,0
 2026-10-02,03:54:00,2026,Falcon Heavy,NROL-97,,Classified,Other,Success,0
+2026-10-10,07:39:00,2026,Falcon 9,SDA Tranche 1 Transport Layer A (21 satellites),,Polar LEO,LEO (Other),Success,0
