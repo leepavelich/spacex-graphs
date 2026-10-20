@@ -724,3 +724,4 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2026-10-13,00:28:00,2026,Falcon 9,Starlink: Group 15-25,15525,LEO,LEO (Starlink),Success,15525
 2026-10-13,10:33:00,2026,Falcon 9,SpaceX CRS-35 (Dragon C211-4),3300,LEO (ISS),LEO (Other),Success,3300
 2026-10-16,00:01:00,2026,Falcon 9,USSF-481 (TH-2) (17 Starshield satellites),,Polar LEO,LEO (Other),Success,0
+2026-10-20,11:04:00,2026,Falcon 9,Bandwagon-5 (32 Payloads),,LEO,LEO (Other),Success,0
