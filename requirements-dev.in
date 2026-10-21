@@ -6,5 +6,5 @@ mypy==2.4.0
 pandas-stubs
 pip-audit
 ruff==0.16.10
-uv==0.12.24
+uv==0.13.4
 types-requests
