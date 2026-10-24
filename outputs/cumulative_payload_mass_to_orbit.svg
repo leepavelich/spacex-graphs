@@ -2206,7 +2206,9 @@ L 550.278108 177.325369
 L 569.737932 177.325369 
 L 569.737932 173.930089 
 L 585.954451 173.930089 
-L 585.954451 173.930089 
+L 585.954451 171.129998 
+L 587.576103 171.129998 
+L 587.576103 171.129998 
 " clip-path="url(#p88d438437e)" style="fill: none; stroke: #e34948; stroke-width: 1.5; stroke-linecap: square"/>
    </g>
    <g id="patch_3">
@@ -2688,7 +2690,7 @@ z
    </g>
   </g>
   <g id="text_23">
-   <!-- Data: Wikipedia contributors, CC BY-SA 4.0, launches through 20 October 2026. 62 successful launches with unknown or classified payload mass count as 0 kg. -->
+   <!-- Data: Wikipedia contributors, CC BY-SA 4.0, launches through 23 October 2026. 62 successful launches with unknown or classified payload mass count as 0 kg. -->
    <g style="fill: #808080" transform="translate(7.2 497.278359) scale(0.07 -0.07)">
     <defs>
      <path id="DejaVuSans-27" d="M 1259 4147 
@@ -2951,7 +2953,7 @@ z
     <use xlink:href="#DejaVuSans-4b" transform="translate(3012.484375 0)"/>
     <use xlink:href="#DejaVuSans-3" transform="translate(3075.859375 0)"/>
     <use xlink:href="#DejaVuSans-15" transform="translate(3107.640625 0)"/>
-    <use xlink:href="#DejaVuSans-13" transform="translate(3171.265625 0)"/>
+    <use xlink:href="#DejaVuSans-16" transform="translate(3171.265625 0)"/>
     <use xlink:href="#DejaVuSans-3" transform="translate(3234.890625 0)"/>
     <use xlink:href="#DejaVuSans-32" transform="translate(3266.671875 0)"/>
     <use xlink:href="#DejaVuSans-46" transform="translate(3345.390625 0)"/>
