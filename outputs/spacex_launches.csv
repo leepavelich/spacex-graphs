@@ -663,7 +663,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2026-05-15,22:05:00,2026,Falcon 9,SpaceX CRS-34 (Cargo Dragon C209-6),2948,LEO (ISS),LEO (Other),Success,2948
 2026-05-20,02:46:00,2026,Falcon 9,Starlink: Group 17-42,13800,SSO,SSO (Starlink),Success,13800
 2026-05-21,10:04:00,2026,Falcon 9,Starlink: Group 10-31,16675,LEO,LEO (Starlink),Success,16675
-2026-05-22,22:30:00,2026,Block 3 Starship,20 Starlink simulator satellites and 2 modified Starlink V3,37500,Transatmospheric,Transatmospheric,Success,37500
+2026-05-22,22:30:00,2026,Block 3 Starship,20 Starlink simulator satellites & 2 modified Starlink V3,37500,Transatmospheric,Transatmospheric,Success,37500
 2026-05-25,11:48:00,2026,Falcon 9,Starlink: Group 10-47,16675,LEO,LEO (Starlink),Success,16675
 2026-05-26,14:50:00,2026,Falcon 9,Starlink: Group 17-37,13800,SSO,SSO (Starlink),Success,13800
 2026-05-29,12:57:00,2026,Falcon 9,Starlink: Group 10-53,16675,LEO,LEO (Starlink),Success,16675
