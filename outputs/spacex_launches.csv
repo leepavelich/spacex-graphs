@@ -727,3 +727,4 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2026-10-20,11:04:00,2026,Falcon 9,Bandwagon-5 (32 Payloads),,LEO,LEO (Other),Success,0
 2026-10-23,22:48:00,2026,Falcon 9,Starlink: Group 15-15,15525,LEO,LEO (Starlink),Success,15525
 2026-10-27,07:25:00,2026,Falcon 9,Starlink: Group 15-16,15525,LEO,LEO (Starlink),Success,15525
+2026-10-31,04:04:00,2026,Falcon 9,Starlink: Group 15-18,15525,LEO,LEO (Starlink),Success,15525
