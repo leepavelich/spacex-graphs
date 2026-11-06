@@ -2,9 +2,9 @@
 -r requirements.in
 # Keep shared packages at exactly the runtime lock's versions
 -c requirements.txt
-mypy==2.4.0
+mypy==2.4.1
 pandas-stubs
 pip-audit
-ruff==0.17.1
-uv==0.13.4
+ruff==0.17.3
+uv==0.13.6
 types-requests
