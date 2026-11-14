@@ -730,3 +730,4 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2026-10-31,04:04:00,2026,Falcon 9,Starlink: Group 15-18,15525,LEO,LEO (Starlink),Success,15525
 2026-11-07,00:48:00,2026,Falcon 9,"USSF-432 (""R-4"") (~23 Starshield satellites)",,LEO,LEO (Other),Success,0
 2026-11-12,04:36:00,2026,Falcon 9,"USSF-627 (""R-5"") (~23 Starshield satellites)",,LEO,LEO (Other),Success,0
+2026-11-13,22:45:00,2026,Block 3 Starship,Starlink Group 31-2,44000,LEO,LEO (Starlink),Success,44000
