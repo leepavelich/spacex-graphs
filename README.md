@@ -32,7 +32,7 @@ If a cache volume from before this option worked fails with a permission error, 
 
 ## Running locally
 
-You need Python 3.11 or newer.
+You need Python 3.11.5 or newer.
 
 ```bash
 python3 -m venv .venv

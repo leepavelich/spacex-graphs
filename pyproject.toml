@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "Graphs of SpaceX payload mass launched, built from Wikipedia launch lists"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.11.5"
 # Runtime dependencies are pinned, with hashes, in requirements.in/requirements.txt
 
 [tool.ruff]

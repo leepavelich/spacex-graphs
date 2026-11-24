@@ -9,7 +9,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 for name in requirements requirements-dev; do
-    uv pip compile --quiet --python-version 3.11 \
+    uv pip compile --quiet --python-version 3.11.5 \
         --python-platform x86_64-manylinux_2_28 --generate-hashes \
         --emit-index-url "$@" "$name.in" -o "$name.txt"
 done
