@@ -6,7 +6,7 @@ import json
 import logging
 import os
 from collections.abc import Callable, Iterable
-from typing import Any, TypeVar, overload
+from typing import Any, overload
 
 import requests
 
@@ -14,8 +14,6 @@ from spacex_graphs.config import HEADERS, REQUEST_TIMEOUT, STALE_CACHE_LIMIT
 from spacex_graphs.errors import DataError
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 
 def _cache_paths(url: str, cache_dir: str) -> tuple[str, str]:
@@ -44,7 +42,7 @@ def _read_meta(cache_meta_path: str) -> dict[str, str]:
         with open(cache_meta_path, encoding="utf-8") as f:
             meta: dict[str, str] = json.load(f)
             return meta
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return {}
 
 
@@ -73,7 +71,7 @@ def _verified_at(meta: dict[str, str], cache_content_path: str) -> datetime.date
     """
     try:
         return datetime.datetime.fromisoformat(meta["verified_at"])
-    except (KeyError, ValueError):
+    except KeyError, ValueError:
         mtime = os.path.getmtime(cache_content_path)
         return datetime.datetime.fromtimestamp(mtime, datetime.UTC)
 
@@ -113,7 +111,7 @@ def fetch_with_cache(
 
 
 @overload
-def fetch_with_cache(
+def fetch_with_cache[T](
     url: str, parse: Callable[[bytes], T], *, cache_dir: str, name: str | None = None
 ) -> tuple[T, bool]: ...
 
