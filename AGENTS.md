@@ -33,7 +33,9 @@ Guidance for coding agents working in this repository. It covers only what the c
 ## Dependencies
 
 - Edit `requirements.in` (runtime) or `requirements-dev.in` (tools), then run `scripts/update-locks.sh` to regenerate both locks; it needs uv, which `requirements-dev.txt` installs. The `requirements*.txt` locks carry hashes that pip enforces, so hand edits break installs, and CI fails when a lock doesn't match its `.in` file.
-- Python 3.11 is the target for CI and Docker.
+- Dependabot waits 7 days after a release before proposing it, so a compromised or broken release is usually yanked first. Keep the same cooldown when upgrading by hand: `UV_EXCLUDE_NEWER=<UTC timestamp a week ago> scripts/update-locks.sh --upgrade`. Use the environment variable, not `--exclude-newer`, which uv writes into the lock header that CI's sync check and Dependabot compare against.
+- Python 3.15 is the target. Change its version everywhere at once: `requires-python`, ruff's `target-version`, and mypy's `python_version` in `pyproject.toml`; `--python-version` in `scripts/update-locks.sh`; `python-version` in both workflows; the Dockerfile's base image; and the README.
+- The locks are resolved for the exact `--python-version` in `scripts/update-locks.sh`, and uv silently skips any release that needs a newer Python. Keep that version equal to `requires-python`, the oldest Python the project supports. A Dependabot PR that won't move a package past a security alert is often this: soupsieve's fixes were held back because they need 3.11.5 and the locks targeted 3.11.0.
 
 ## Commits and pull requests
 

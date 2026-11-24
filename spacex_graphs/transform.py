@@ -159,5 +159,5 @@ def build_cumulative_frame(df: pd.DataFrame, today: datetime.date) -> pd.DataFra
     # at exactly midnight, so cumulative sums never step backwards
     points = points.sort_values([Col.YEAR, Col.DATETIME], kind="stable")
     points[Col.CUMULATIVE_MASS] = points.groupby(Col.YEAR)[Col.MASS].cumsum()
-    points[Col.DAY_OF_YEAR] = points[Col.DATETIME].dt.dayofyear
+    points[Col.DAY_OF_YEAR] = points[Col.DATETIME].dt.day_of_year
     return points.reset_index(drop=True)
