@@ -728,9 +728,9 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2026-10-23,22:48:00,2026,Falcon 9,Starlink: Group 15-15,15525,LEO,LEO (Starlink),Success,15525
 2026-10-27,07:25:00,2026,Falcon 9,Starlink: Group 15-16,15525,LEO,LEO (Starlink),Success,15525
 2026-10-31,04:04:00,2026,Falcon 9,Starlink: Group 15-18,15525,LEO,LEO (Starlink),Success,15525
-2026-11-07,00:48:00,2026,Falcon 9,"USSF-432 (""R-4"") (~23 Starshield satellites)",,LEO,LEO (Other),Success,0
-2026-11-12,04:36:00,2026,Falcon 9,"USSF-627 (""R-5"") (~23 Starshield satellites)",,LEO,LEO (Other),Success,0
+2026-11-07,00:48:00,2026,Falcon 9,"USSF-432 (""R-4"") (23 Starshield satellites)",,LEO,LEO (Other),Success,0
+2026-11-12,04:36:00,2026,Falcon 9,"USSF-627 (""R-5"") (23 Starshield satellites)",,LEO,LEO (Other),Success,0
 2026-11-13,22:47:00,2026,Block 3 Starship,Starlink Group 31-2,44000,LEO,LEO (Starlink),Success,44000
-2026-11-21,04:20:00,2026,Falcon 9,"USSF-317 (""R-6"")",,LEO,LEO (Other),Success,0
-2026-11-22,12:23:00,2026,Falcon 9,NROL-136,,LEO,LEO (Other),Success,0
-2026-11-24,16:08:00,2026,Falcon 9,USSF-266 (TH-3),,Polar LEO,LEO (Other),Success,0
+2026-11-21,04:20:00,2026,Falcon 9,"USSF-317 (""R-6"") (23 Starshield satellites)",,LEO,LEO (Other),Success,0
+2026-11-22,12:23:00,2026,Falcon 9,NROL-136 (12 Starshield satellites),,LEO,LEO (Other),Success,0
+2026-11-24,16:08:00,2026,Falcon 9,USSF-266 (TH-3) (16 Starshield satellites),,Polar LEO,LEO (Other),Success,0
