@@ -7,11 +7,13 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from importlib import metadata
 from pathlib import Path
 
-import matplotlib.pyplot as plt
+import matplotlib
+from matplotlib.figure import Figure
 
 from spacex_graphs import cache, output, plotting, transform, validation
 from spacex_graphs.config import (
@@ -167,32 +169,47 @@ def run(
 
     df = transform.build_dataframe(records)
     caption = transform.chart_caption(df)
-    # Each graph, keyed by the SVG file it is saved to
-    figures = {}
-    try:
-        figures[output.BY_YEAR_SVG] = plotting.plot_payload_mass_to_orbit_by_year(
-            transform.payload_mass_by_year_orbit(df),
-            current_year=today.year,
-            caption=caption,
-        )
-        figures[output.CUMULATIVE_SVG] = plotting.plot_cumulative_payload_mass_to_orbit(
-            transform.build_cumulative_frame(df, today), today, caption=caption
-        )
+    by_year = transform.payload_mass_by_year_orbit(df)
+    cumulative = transform.build_cumulative_frame(df, today)
+    # Each graph, keyed by the SVG file it is saved to. They are plain Figure
+    # objects that pyplot never sees, so there is nothing to close afterwards.
+    figures = {
+        output.BY_YEAR_SVG: plotting.plot_payload_mass_to_orbit_by_year(
+            by_year, current_year=today.year, caption=caption
+        ),
+        output.CUMULATIVE_SVG: plotting.plot_cumulative_payload_mass_to_orbit(
+            cumulative, today, caption=caption
+        ),
+    }
 
-        if save_output:
-            output.save_plots(figures, output_dir=output_dir)
-            output.save_launches_csv(df, output_dir=output_dir)
-            output.save_data_hash(
-                records, today, cache_dir=cache_dir, code_version=version
-            )
-            logger.info("Graphs updated successfully")
-            _summarize(summary_path, "Regenerated the graphs and CSV.")
-        else:
-            plt.show()
-    finally:
-        if save_output:
-            for figure in figures.values():
-                plt.close(figure)
+    if save_output:
+        output.save_plots(
+            figures,
+            output_dir=output_dir,
+            descriptions={
+                output.BY_YEAR_SVG: transform.by_year_summary(by_year, today.year),
+                output.CUMULATIVE_SVG: transform.cumulative_summary(cumulative, today),
+            },
+        )
+        output.save_launches_csv(df, output_dir=output_dir)
+        output.save_data_hash(records, today, cache_dir=cache_dir, code_version=version)
+        logger.info("Graphs updated successfully")
+        _summarize(summary_path, "Regenerated the graphs and CSV.")
+    else:
+        _show(figures.values())
+
+
+def _show(figures: Iterable[Figure]) -> None:
+    """Shows the figures in windows until they are closed.
+
+    pyplot is imported only here, so saving never starts a GUI backend.
+    """
+    import matplotlib.pyplot as plt
+
+    for figure in figures:
+        # Hands the figure to pyplot, which gives it a window
+        plt.figure(figure)
+    plt.show()
 
 
 def _in_github_actions() -> bool:
@@ -260,7 +277,7 @@ def main() -> None:
         "-q", "--quiet", action="store_true", help="only print warnings and errors"
     )
     args = parser.parse_args()
-    if not args.output and plt.get_backend().lower() in _FILE_ONLY_BACKENDS:
+    if not args.output and matplotlib.get_backend().lower() in _FILE_ONLY_BACKENDS:
         parser.error(
             "there is no display to show the graphs on; pass --output to save them"
         )

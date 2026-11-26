@@ -7,11 +7,16 @@ import pandas as pd
 
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.transform import (
+    DAYS_IN_LEAP_YEAR,
+    LaunchFrame,
     build_cumulative_frame,
     build_dataframe,
+    by_year_summary,
+    calendar_day,
     categorize_starlink,
     chart_caption,
     clean_orbit_category,
+    cumulative_summary,
     launch_succeeded,
     payload_mass_by_year_orbit,
 )
@@ -278,10 +283,78 @@ class TestChartCaption(unittest.TestCase):
         self.assertIn("count as 0 kg", caption)
 
     def test_empty_frames_have_no_latest_date(self):
-        for frame in (pd.DataFrame(), build_dataframe([])):
+        for frame in (LaunchFrame(pd.DataFrame()), build_dataframe([])):
             caption = chart_caption(frame)
             self.assertIn("CC BY-SA 4.0", caption)
             self.assertIn("No launches available", caption)
+
+
+class TestCalendarDay(unittest.TestCase):
+    def test_every_date_has_its_leap_year_day(self):
+        for date, expected in (
+            (datetime.date(2025, 1, 1), 1),
+            (datetime.date(2025, 2, 28), 59),
+            (datetime.date(2024, 2, 28), 59),
+            (datetime.date(2024, 2, 29), 60),
+            (datetime.date(2024, 3, 1), 61),
+            (datetime.date(2025, 3, 1), 61),
+            (datetime.date(2026, 10, 3), 277),
+            (datetime.date(2024, 12, 31), 366),
+            (datetime.date(2025, 12, 31), 366),
+        ):
+            with self.subTest(date=date):
+                self.assertEqual(calendar_day(date), expected)
+
+    def test_a_date_has_the_same_day_in_every_year(self):
+        for month, day in ((1, 31), (3, 1), (7, 4), (12, 31)):
+            days = {
+                calendar_day(datetime.date(year, month, day))
+                for year in range(2017, 2031)
+            }
+            with self.subTest(month=month, day=day):
+                self.assertEqual(len(days), 1)
+
+
+class TestSummaries(unittest.TestCase):
+    TODAY = datetime.date(2026, 10, 3)
+
+    def _df(self):
+        return build_dataframe(
+            [
+                _launch(datetime.datetime(2024, 5, 1), 1_000),
+                _launch(datetime.datetime(2025, 5, 1), 2_500_000),
+                _launch(datetime.datetime(2026, 5, 1), 3_000_000),
+            ]
+        )
+
+    def test_bar_chart_summary_names_the_years_and_totals(self):
+        summary = by_year_summary(payload_mass_by_year_orbit(self._df()), 2026)
+        self.assertEqual(
+            summary,
+            "Stacked bar chart of the payload mass SpaceX launched each year from "
+            "2024 to 2026, split by destination orbit. The heaviest full year is "
+            "2025, with 2,500,000 kg. 2026 so far totals 3,000,000 kg.",
+        )
+
+    def test_cumulative_summary_names_year_end_totals(self):
+        frame = build_cumulative_frame(self._df(), self.TODAY)
+        self.assertEqual(
+            cumulative_summary(frame, self.TODAY),
+            "Line chart of the cumulative payload mass SpaceX launched over each "
+            "year from 2024 to 2026, one line per year on a shared calendar. "
+            "Year-end totals: 2025 2,500,000 kg, 2024 1,000 kg. "
+            "2026 reached 3,000,000 kg by 3 October.",
+        )
+
+    def test_summaries_without_launches(self):
+        empty = build_dataframe([])
+        self.assertIn(
+            "no launches to show", by_year_summary(payload_mass_by_year_orbit(empty))
+        )
+        self.assertIn(
+            "no launches to show",
+            cumulative_summary(build_cumulative_frame(empty, self.TODAY), self.TODAY),
+        )
 
 
 class TestBuildCumulativeFrame(unittest.TestCase):
@@ -299,13 +372,47 @@ class TestBuildCumulativeFrame(unittest.TestCase):
             _launch(datetime.datetime(2025, 3, 1, 12), 100),
             _launch(datetime.datetime(2025, 2, 1, 12), 50),
         ]
+        # Days are on the shared leap-year calendar: 2025 skips February 29
         self.assertEqual(
-            self._series(records, 2025), [(1, 0), (32, 50), (60, 150), (365, 150)]
+            self._series(records, 2025), [(1, 0), (32, 50), (61, 150), (366, 150)]
         )
 
     def test_current_year_ends_today(self):
         records = [_launch(datetime.datetime(2026, 5, 1), 10)]
-        self.assertEqual(self._series(records, 2026)[-1], (276, 10))
+        # October 3 is day 276 of 2026, and day 277 on the leap-year calendar
+        self.assertEqual(self._series(records, 2026)[-1], (277, 10))
+
+    def test_leap_and_common_years_share_one_calendar(self):
+        dates = {
+            2024: [(2, 28), (2, 29), (3, 1), (12, 31)],
+            2025: [(2, 28), (3, 1), (12, 31)],
+        }
+        records = [
+            _launch(datetime.datetime(year, month, day, 12), 1)
+            for year, days in dates.items()
+            for month, day in days
+        ]
+        frame = build_cumulative_frame(build_dataframe(records), self.TODAY)
+        days = {
+            (when.year, when.month, when.day): day
+            for when, day in zip(frame["DateTime"], frame["DayOfYear"], strict=True)
+            if when.hour == 12
+        }
+        self.assertEqual(
+            days,
+            {
+                (2024, 2, 28): 59,
+                (2024, 2, 29): 60,
+                (2024, 3, 1): 61,
+                (2024, 12, 31): 366,
+                (2025, 2, 28): 59,
+                (2025, 3, 1): 61,
+                (2025, 12, 31): 366,
+            },
+        )
+        # Both years' lines end on the same day, December 31st
+        ends = frame.groupby("Year")["DayOfYear"].last()
+        self.assertEqual(ends.tolist(), [DAYS_IN_LEAP_YEAR] * 2)
 
     def test_period_end_follows_last_day_launches(self):
         for day in (datetime.date(2025, 12, 31), self.TODAY):

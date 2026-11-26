@@ -3,19 +3,22 @@
 import csv
 import datetime
 import hashlib
+import io
 import json
 import logging
 import os
 from collections.abc import Iterable, Mapping
+from xml.sax.saxutils import escape
 
 import matplotlib
 import pandas as pd
 from matplotlib.figure import Figure
 
+from spacex_graphs import plotting
 from spacex_graphs.cache import atomic_writer
 from spacex_graphs.errors import PublishedCsvError
 from spacex_graphs.parsing import LaunchRecord
-from spacex_graphs.transform import Col
+from spacex_graphs.transform import Col, LaunchFrame
 from spacex_graphs.validation import PublishedLaunch
 
 logger = logging.getLogger(__name__)
@@ -25,12 +28,86 @@ logger = logging.getLogger(__name__)
 _SVG_HASH_SALT = "spacex-graphs"
 
 
-def _save_svg(fig: Figure, path: str) -> None:
-    with (
-        matplotlib.rc_context({"svg.hashsalt": _SVG_HASH_SALT, "svg.fonttype": "path"}),
-        atomic_writer(path) as f,
+def _dark_mode_rules() -> list[str]:
+    """CSS rules that recolor a chart for a dark color scheme.
+
+    matplotlib writes each element's colors as inline styles, so the rules
+    find elements by matplotlib's deterministic group IDs or by the exact
+    light-theme colors plotting pins, and need !important to beat the inline
+    styles. Data colors stay as they are, except the few too dark to see on
+    the dark background, which get lighter shades.
+    """
+    background = plotting.DARK_BACKGROUND_COLOR
+    rules = [
+        # The figure's and the axes' backgrounds
+        f"#figure_1 > #patch_1 > path, #axes_1 > #patch_2 > path "
+        f"{{ fill: {background} !important }}",
+        # The legend's frame is the first element in its group
+        f"#legend_1 > g:first-child > path {{ fill: {plotting.DARK_LEGEND_COLOR} "
+        f"!important; stroke: {plotting.DARK_GRID_COLOR} !important }}",
+        # Text in the default color has no fill of its own, so it inherits this
+        f'g[id^="text_"] {{ fill: {plotting.DARK_TEXT_COLOR} }}',
+        f'[style*="fill: {plotting.SECONDARY_TEXT_COLOR}"] '
+        f"{{ fill: {plotting.DARK_SECONDARY_TEXT_COLOR} !important }}",
+        # Spines and tick marks
+        f'[style*="stroke: {plotting.TEXT_COLOR}"] '
+        f"{{ stroke: {plotting.DARK_SECONDARY_TEXT_COLOR} !important }}",
+        f'[style*="stroke: {plotting.GRID_COLOR}"] '
+        f"{{ stroke: {plotting.DARK_GRID_COLOR} !important }}",
+        # The edges between stacked bar segments match the background
+        f'[style*="stroke: {plotting.SEGMENT_EDGE_COLOR}"] '
+        f"{{ stroke: {background} !important }}",
+    ]
+    for light, dark in plotting.DARK_MODE_DATA_COLORS.items():
+        rules.append(f'[style*="fill: {light}"] {{ fill: {dark} !important }}')
+        rules.append(f'[style*="stroke: {light}"] {{ stroke: {dark} !important }}')
+    return rules
+
+
+def dark_mode_css() -> str:
+    """The stylesheet each SVG carries: _dark_mode_rules, applied only when
+    the viewer prefers a dark color scheme."""
+    rules = "".join(f"  {rule}\n" for rule in _dark_mode_rules())
+    return f"@media (prefers-color-scheme: dark) {{\n{rules} }}"
+
+
+def _figure_title(fig: Figure) -> str:
+    if fig.axes:
+        return fig.axes[0].get_title()
+    return ""
+
+
+def _accessible_svg(svg: bytes, title: str, description: str) -> bytes:
+    """Adds a title, a description, and the dark-mode stylesheet to an SVG.
+
+    Text is drawn as glyph outlines (svg.fonttype "path"), so without the
+    <title> and <desc> a screen reader would find no text in the chart.
+    """
+    start = svg.index(b"<svg ")
+    end = svg.index(b">", start)
+    labelled_by = "chart-title chart-desc" if description else "chart-title"
+    attributes = f' role="img" aria-labelledby="{labelled_by}"'
+    elements = f'\n <title id="chart-title">{escape(title)}</title>'
+    if description:
+        elements += f'\n <desc id="chart-desc">{escape(description)}</desc>'
+    elements += f'\n <style type="text/css">\n {dark_mode_css()}\n </style>'
+    return svg[:end] + attributes.encode() + b">" + elements.encode() + svg[end + 1 :]
+
+
+def _save_svg(fig: Figure, path: str, description: str) -> None:
+    buffer = io.BytesIO()
+    with matplotlib.rc_context(
+        {"svg.hashsalt": _SVG_HASH_SALT, "svg.fonttype": "path"}
     ):
-        fig.savefig(f, format="svg", metadata={"Date": None})
+        fig.savefig(buffer, format="svg", metadata={"Date": None})
+    captions = [text.get_text() for text in fig.texts]
+    svg = _accessible_svg(
+        buffer.getvalue(),
+        _figure_title(fig),
+        " ".join(part for part in (description, *captions) if part),
+    )
+    with atomic_writer(path) as f:
+        f.write(svg)
 
 
 BY_YEAR_SVG = "payload_mass_to_orbit_by_year.svg"
@@ -58,11 +135,27 @@ def missing_outputs(output_dir: str) -> list[str]:
     ]
 
 
-def save_plots(figures: Mapping[str, Figure], *, output_dir: str) -> None:
+def save_plots(
+    figures: Mapping[str, Figure],
+    *,
+    output_dir: str,
+    descriptions: Mapping[str, str] | None = None,
+) -> None:
     """Saves each figure as an SVG under its file name (a key of figures),
-    byte-identical for identical figures."""
+    byte-identical for identical figures.
+
+    Each SVG is titled after its chart, and described by its entry in
+    descriptions (if any) followed by its caption, for screen readers. It also
+    carries a stylesheet that switches it to dark colors when the viewer
+    prefers a dark color scheme.
+    """
+    descriptions = descriptions or {}
     for filename, figure in figures.items():
-        _save_svg(figure, os.path.join(output_dir, filename))
+        _save_svg(
+            figure,
+            os.path.join(output_dir, filename),
+            descriptions.get(filename, ""),
+        )
 
 
 def published_launches(output_dir: str) -> list[PublishedLaunch]:
@@ -124,7 +217,7 @@ def _unescape_formula(text: str) -> str:
     return text
 
 
-def save_launches_csv(df: pd.DataFrame, *, output_dir: str) -> None:
+def save_launches_csv(df: LaunchFrame, *, output_dir: str) -> None:
     """Saves all launches, with raw and categorized orbits, to a CSV file.
 
     "Payload Mass (kg)" is what Wikipedia reports, blank when unknown or

@@ -1,14 +1,16 @@
-"""Tests for cumulative chart year colors (rendered with the Agg backend)."""
+"""Tests for the cumulative chart: year colors, geometry, and direct labels.
+
+The figures render on their own Agg canvases, without pyplot.
+"""
 
 import datetime
+import itertools
 import unittest
 
-import matplotlib
-
-matplotlib.use("Agg")
-
-import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.colors import to_hex
+from matplotlib.path import Path
+from matplotlib.text import Annotation, Text
 
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.plotting import (
@@ -19,6 +21,7 @@ from spacex_graphs.plotting import (
 from spacex_graphs.transform import (
     build_cumulative_frame,
     build_dataframe,
+    calendar_day,
 )
 
 
@@ -35,9 +38,6 @@ def _cumulative_figure(years, today=None):
 
 
 class TestPlotCumulative(unittest.TestCase):
-    def tearDown(self):
-        plt.close("all")
-
     def test_pre_highlight_years_are_grey(self):
         ax = _cumulative_figure(range(2017, 2027)).axes[0]
         colors = {line.get_label(): line.get_color() for line in ax.lines}
@@ -79,16 +79,13 @@ class TestPlotCumulative(unittest.TestCase):
 
 
 class TestCumulativeGeometry(unittest.TestCase):
-    def tearDown(self):
-        plt.close("all")
-
-    def test_lines_step_and_the_axis_spans_the_current_year(self):
+    def test_lines_step_and_the_axis_spans_the_leap_year_calendar(self):
         ax = _cumulative_figure(range(2023, 2025)).axes[0]
         for line in ax.lines:
             self.assertEqual(line.get_drawstyle(), "steps-post")
-        # TODAY is in 2026, a 365-day year: equal padding either side of
-        # day 1 and day 365
-        self.assertEqual(ax.get_xlim(), (-5, 371))
+        # Every year is drawn on the 366-day calendar: equal padding either
+        # side of day 1 and day 366, whether or not today is in a leap year
+        self.assertEqual(ax.get_xlim(), (-5, 372))
         leap = _cumulative_figure([2024], today=datetime.date(2024, 5, 1)).axes[0]
         self.assertEqual(leap.get_xlim(), (-5, 372))
         self.assertEqual(
@@ -99,11 +96,42 @@ class TestCumulativeGeometry(unittest.TestCase):
             [label.get_rotation() for label in ax.get_xticklabels()], [0] * 6
         )
 
-    def test_month_ticks_follow_the_current_years_calendar(self):
-        common = _cumulative_figure([2026], today=datetime.date(2026, 10, 3)).axes[0]
-        self.assertEqual(list(common.get_xticks()), [1, 60, 121, 182, 244, 305])
-        leap = _cumulative_figure([2028], today=datetime.date(2028, 10, 3)).axes[0]
-        self.assertEqual(list(leap.get_xticks()), [1, 61, 122, 183, 245, 306])
+    def test_month_ticks_use_the_leap_year_calendar_in_every_year(self):
+        leap_calendar = [1, 61, 122, 183, 245, 306]
+        for today in (datetime.date(2026, 10, 3), datetime.date(2028, 10, 3)):
+            with self.subTest(today=today):
+                ax = _cumulative_figure([today.year], today=today).axes[0]
+                self.assertEqual(list(ax.get_xticks()), leap_calendar)
+
+    def test_same_date_lines_up_across_leap_and_common_years(self):
+        # A launch on March 1st steps every year's line at the same x, which
+        # is also where the "Mar 1" tick sits
+        records = [
+            LaunchRecord(year, "LEO", "Sat", 1000, datetime.datetime(year, 3, 1), "F9")
+            for year in (2023, 2024, 2025, 2026)
+        ]
+        today = datetime.date(2026, 10, 3)
+        ax = plot_cumulative_payload_mass_to_orbit(
+            build_cumulative_frame(build_dataframe(records), today), today
+        ).axes[0]
+        steps = {
+            line.get_label(): next(
+                x for x, y in np.asarray(line.get_xydata()) if y == 1000
+            )
+            for line in ax.lines
+        }
+        self.assertEqual(set(steps.values()), {61})
+        ticks = dict(
+            zip(
+                [label.get_text() for label in ax.get_xticklabels()],
+                ax.get_xticks(),
+                strict=True,
+            )
+        )
+        self.assertEqual(ticks["Mar 1"], 61)
+        # Past years all end on December 31st, day 366
+        ends = {line.get_label(): np.asarray(line.get_xdata())[-1] for line in ax.lines}
+        self.assertEqual(ends, {"2023": 366, "2024": 366, "2025": 366, "2026": 277})
 
     def test_gridlines_are_drawn_behind_the_lines(self):
         ax = _cumulative_figure([2026]).axes[0]
@@ -111,9 +139,6 @@ class TestCumulativeGeometry(unittest.TestCase):
 
 
 class TestCumulativeLabels(unittest.TestCase):
-    def tearDown(self):
-        plt.close("all")
-
     def test_single_older_year_is_labelled_alone(self):
         ax = _cumulative_figure(range(2019, 2027)).axes[0]
         legend = [text.get_text() for text in ax.get_legend().get_texts()]
@@ -144,9 +169,6 @@ class TestCumulativeLabels(unittest.TestCase):
 
 
 class TestCurrentYearEmphasis(unittest.TestCase):
-    def tearDown(self):
-        plt.close("all")
-
     def test_current_year_is_thicker_and_ends_in_a_dot(self):
         today = datetime.date(2026, 10, 3)
         ax = _cumulative_figure(range(2017, 2027), today=today).axes[0]
@@ -158,7 +180,7 @@ class TestCurrentYearEmphasis(unittest.TestCase):
         self.assertEqual(len(ax.collections), 1)
         dot = ax.collections[0]
         # Today's position and the year's total so far
-        day = today.timetuple().tm_yday
+        day = calendar_day(today)
         self.assertEqual([list(point) for point in dot.get_offsets()], [[day, 1000]])
         self.assertEqual(to_hex(dot.get_facecolor()[0]), YEAR_COLORS[0])
         legend = [text.get_text() for text in ax.get_legend().get_texts()]
@@ -173,9 +195,6 @@ class TestCurrentYearEmphasis(unittest.TestCase):
 
 
 class TestEmptyCumulative(unittest.TestCase):
-    def tearDown(self):
-        plt.close("all")
-
     def test_empty_frame_draws_an_empty_chart(self):
         today = datetime.date(2026, 10, 3)
         fig = plot_cumulative_payload_mass_to_orbit(
@@ -185,6 +204,193 @@ class TestEmptyCumulative(unittest.TestCase):
         self.assertEqual(len(ax.lines), 0)
         self.assertIsNone(ax.get_legend())
         self.assertEqual([t.get_text() for t in ax.texts], ["No launches to show"])
+
+
+def _projected_records(first_year, today, annual_total):
+    """Twice-monthly launches in each year up to today, a year's launches
+    summing to annual_total(year)."""
+    records = []
+    for year in range(first_year, today.year + 1):
+        for month, day in itertools.product(range(1, 13), (1, 15)):
+            when = datetime.datetime(year, month, day, 12)
+            if when.date() <= today:
+                mass = round(annual_total(year) / 24)
+                records.append(LaunchRecord(year, "LEO", "Starlink", mass, when, "F9"))
+    return records
+
+
+def _starship_era(year):
+    # Today's ~2.2 million kg a year, growing 60% a year from 2026 on
+    return 2_200_000 * 1.6 ** max(0, year - 2025) * (year - 2005) / 20
+
+
+def _plot(records, today, caption=""):
+    return plot_cumulative_payload_mass_to_orbit(
+        build_cumulative_frame(build_dataframe(records), today), today, caption=caption
+    )
+
+
+def _text_box(label):
+    # The label's text alone, without its leader line
+    return Text.get_window_extent(label)
+
+
+def _step_path(line):
+    """The line as drawn (with steps-post), in display coordinates."""
+    xs, ys = line.get_data()
+    vertices = []
+    for (x0, y0), (x1, _) in itertools.pairwise(zip(xs, ys, strict=True)):
+        vertices += [(x0, y0), (x1, y0)]
+    vertices.append((xs[-1], ys[-1]))
+    return Path(line.get_transform().transform(vertices))
+
+
+class TestDirectLabels(unittest.TestCase):
+    def _labels(self, ax):
+        return [text for text in ax.texts if isinstance(text, Annotation)]
+
+    def test_highlighted_years_are_labelled_with_leaders_in_their_colors(self):
+        today = datetime.date(2026, 10, 3)
+        fig = _cumulative_figure(range(2017, 2027), today=today)
+        ax = fig.axes[0]
+        colors = {line.get_label(): to_hex(line.get_color()) for line in ax.lines}
+        labels = self._labels(ax)
+        self.assertEqual(
+            [label.get_text() for label in labels],
+            [str(year) for year in range(2026, 2019, -1)],
+        )
+        for label in labels:
+            with self.subTest(year=label.get_text()):
+                assert label.arrow_patch is not None
+                self.assertEqual(
+                    to_hex(label.arrow_patch.get_edgecolor()),
+                    colors[label.get_text()],
+                )
+
+    def test_labels_sit_level_with_their_lines_ends(self):
+        records = [
+            LaunchRecord(2024, "LEO", "A", 1_000, datetime.datetime(2024, 6, 1), "F9"),
+            LaunchRecord(
+                2025, "LEO", "B", 900_000, datetime.datetime(2025, 6, 1), "F9"
+            ),
+        ]
+        today = datetime.date(2026, 10, 3)
+        fig = _plot(records, today)
+        fig.draw_without_rendering()
+        ax = fig.axes[0]
+        for label in self._labels(ax):
+            line_end = ax.transData.transform((0, label.xy[1]))[1]
+            with self.subTest(year=label.get_text()):
+                # Far apart already, so neither was nudged
+                self.assertAlmostEqual(
+                    _text_box(label).y0 + _text_box(label).height / 2, line_end, delta=1
+                )
+                self.assertEqual(label.xyann[1], 0)
+
+    def test_close_totals_are_nudged_apart_in_order(self):
+        # Eight highlighted years that all end within 1% of each other
+        today = datetime.date(2027, 11, 25)
+        records = _projected_records(
+            2020, today, lambda year: 2_000_000 + (year - 2020) * 2_000
+        )
+        fig = _plot(records, today, caption="Source: test")
+        fig.draw_without_rendering()
+        ax = fig.axes[0]
+        labels = self._labels(ax)
+        self.assertEqual(len(labels), 8)
+        boxes = [_text_box(label) for label in labels]
+        for (a, box_a), (b, box_b) in itertools.combinations(
+            zip(labels, boxes, strict=True), 2
+        ):
+            with self.subTest(a=a.get_text(), b=b.get_text()):
+                self.assertFalse(box_a.overlaps(box_b))
+        # Ties keep their order, and every label stays within the axes' height
+        by_height = sorted(zip(labels, boxes, strict=True), key=lambda pair: pair[1].y0)
+        totals = [label.xy[1] for label, _ in by_height]
+        self.assertEqual(totals, sorted(totals))
+        axes_box = ax.get_window_extent()
+        for box in boxes:
+            self.assertGreaterEqual(box.y0, axes_box.y0 - 1)
+            self.assertLessEqual(box.y1, axes_box.y1 + 1)
+
+    def test_no_labels_without_highlighted_years(self):
+        ax = _cumulative_figure(range(2017, 2020)).axes[0]
+        self.assertEqual(self._labels(ax), [])
+
+
+class TestCumulativeLayoutStress(unittest.TestCase):
+    """Projected Starship-era data: 14 years, the newest above 20 million kg."""
+
+    TODAY = datetime.date(2030, 11, 25)
+
+    def setUp(self):
+        self.fig = _plot(
+            _projected_records(2017, self.TODAY, _starship_era),
+            self.TODAY,
+            caption="Data: Wikipedia contributors, CC BY-SA 4.0, launches through "
+            "24 November 2030. 123 successful launches with unknown or classified "
+            "payload mass count as 0 kg.",
+        )
+        self.fig.draw_without_rendering()
+        self.ax = self.fig.axes[0]
+
+    def test_legend_overlaps_no_data(self):
+        legend = self.ax.get_legend()
+        assert legend is not None
+        legend_box = legend.get_window_extent()
+        for line in self.ax.lines:
+            with self.subTest(line=line.get_label()):
+                self.assertFalse(_step_path(line).intersects_bbox(legend_box))
+        for dot in self.ax.collections:
+            for x, y in dot.get_offsets():
+                point = self.ax.transData.transform((x, y))
+                self.assertFalse(legend_box.contains(*point))
+
+    def test_labels_are_clear_of_each_other_and_inside_the_figure(self):
+        labels = [text for text in self.ax.texts if isinstance(text, Annotation)]
+        self.assertEqual(
+            [label.get_text() for label in labels],
+            [str(year) for year in range(2030, 2022, -1)],
+        )
+        boxes = [_text_box(label) for label in labels]
+        for box_a, box_b in itertools.combinations(boxes, 2):
+            self.assertFalse(box_a.overlaps(box_b))
+        axes_box = self.ax.get_window_extent()
+        for label, box in zip(labels, boxes, strict=True):
+            with self.subTest(year=label.get_text()):
+                self.assertGreater(box.x0, axes_box.x1)
+                self.assertLess(box.x1, self.fig.bbox.x1)
+
+    def test_every_text_fits_in_the_figure(self):
+        figure_box = self.fig.bbox
+        low, high = self.ax.get_ylim()
+        # Only the ticks within the axes' limits are drawn
+        y_tick_labels = [
+            label
+            for tick, label in zip(
+                self.ax.get_yticks(), self.ax.get_yticklabels(), strict=True
+            )
+            if low <= tick <= high
+        ]
+        texts = [
+            self.ax.title,
+            self.ax.yaxis.label,
+            *self.ax.get_xticklabels(),
+            *y_tick_labels,
+            *self.fig.texts,
+            *self.ax.texts,
+        ]
+        for text in texts:
+            box = Text.get_window_extent(text)
+            with self.subTest(text=text.get_text()):
+                self.assertGreaterEqual(box.x0, figure_box.x0)
+                self.assertLessEqual(box.x1, figure_box.x1)
+                self.assertGreaterEqual(box.y0, figure_box.y0)
+                self.assertLessEqual(box.y1, figure_box.y1)
+
+    def test_y_ticks_stay_readable_at_tens_of_millions(self):
+        labels = [label.get_text() for label in self.ax.get_yticklabels()]
+        self.assertIn("20,000,000", labels)
 
 
 class TestYearPalette(unittest.TestCase):

@@ -1,18 +1,23 @@
-"""Tests for the bar chart and the shared figure setup (rendered with the Agg backend)."""
+"""Tests for the bar chart, the shared figure setup, and both palettes.
+
+The figures render on their own Agg canvases, without pyplot.
+"""
 
 import datetime
 import itertools
 import math
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 
 import matplotlib
-
-matplotlib.use("Agg")
-
 import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
 
+from spacex_graphs import plotting
 from spacex_graphs.config import ORBIT_CATEGORIES
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.plotting import (
@@ -23,9 +28,12 @@ from spacex_graphs.plotting import (
 )
 from spacex_graphs.transform import (
     Col,
+    YearOrbitFrame,
     build_dataframe,
     payload_mass_by_year_orbit,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 
 # Machado, Oliveira & Fernandes (2009) full-severity simulation matrices, which
 # act on linear RGB
@@ -61,9 +69,22 @@ def _relative_luminance(color):
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
+def contrast(color_a, color_b):
+    """WCAG 2 contrast ratio between two colors."""
+    darker, lighter = sorted(
+        (_relative_luminance(color_a), _relative_luminance(color_b))
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
 def contrast_against_white(color):
     """WCAG 2 contrast ratio between the color and white."""
-    return 1.05 / (_relative_luminance(color) + 0.05)
+    return contrast(color, "#ffffff")
+
+
+def in_dark_mode(color):
+    """The color as the dark-mode stylesheet shows it."""
+    return plotting.DARK_MODE_DATA_COLORS.get(color, color)
 
 
 def cielab(color, vision="normal"):
@@ -99,12 +120,14 @@ def _record(year, orbit, payload, mass):
 
 def _frame(totals_by_year):
     """A by-year frame with each year's whole total in one category."""
-    return pd.DataFrame(
-        {
-            Col.YEAR: list(totals_by_year),
-            Col.ORBIT: ["LEO (Starlink)"] * len(totals_by_year),
-            Col.MASS: list(totals_by_year.values()),
-        }
+    return YearOrbitFrame(
+        pd.DataFrame(
+            {
+                Col.YEAR: list(totals_by_year),
+                Col.ORBIT: ["LEO (Starlink)"] * len(totals_by_year),
+                Col.MASS: list(totals_by_year.values()),
+            }
+        )
     )
 
 
@@ -147,6 +170,80 @@ class TestOrbitPalette(unittest.TestCase):
                 self.assertGreaterEqual(worst_delta_e(color_a, color_b), 30)
 
 
+class TestDarkPalette(unittest.TestCase):
+    """The dark-mode stylesheet keeps data and text readable on its background."""
+
+    BACKGROUND = plotting.DARK_BACKGROUND_COLOR
+    DATA_COLORS = (
+        *ORBIT_COLORS.values(),
+        *plotting.YEAR_COLORS,
+        plotting.OLDER_YEARS_COLOR,
+    )
+
+    def test_every_data_color_stands_out_against_the_dark_background(self):
+        for color in self.DATA_COLORS:
+            with self.subTest(color=color):
+                self.assertGreaterEqual(
+                    contrast(in_dark_mode(color), self.BACKGROUND), 3.0
+                )
+
+    def test_only_data_colors_are_replaced(self):
+        self.assertLessEqual(set(plotting.DARK_MODE_DATA_COLORS), set(self.DATA_COLORS))
+        for light, dark in plotting.DARK_MODE_DATA_COLORS.items():
+            with self.subTest(light=light):
+                # Lowercase, as matplotlib writes colors in the SVG
+                self.assertEqual(light, mcolors.to_hex(light))
+                self.assertLess(contrast(light, self.BACKGROUND), 3.0)
+                self.assertNotIn(dark, self.DATA_COLORS)
+
+    def test_dark_orbit_colors_stay_distinct_with_color_vision_deficiencies(self):
+        dark = {name: in_dark_mode(color) for name, color in ORBIT_COLORS.items()}
+        for (a, color_a), (b, color_b) in itertools.combinations(dark.items(), 2):
+            with self.subTest(a=a, b=b):
+                self.assertGreaterEqual(worst_delta_e(color_a, color_b), 15)
+        for (a, color_a), (b, color_b) in itertools.pairwise(dark.items()):
+            with self.subTest(a=a, b=b):
+                self.assertGreaterEqual(worst_delta_e(color_a, color_b), 30)
+
+    def test_dark_year_colors_keep_their_neighbors_apart(self):
+        light = plotting.YEAR_COLORS
+        dark = [in_dark_mode(color) for color in light]
+        for (a, b), (dark_a, dark_b) in zip(
+            itertools.pairwise(light), itertools.pairwise(dark), strict=True
+        ):
+            with self.subTest(a=a, b=b):
+                self.assertGreaterEqual(
+                    worst_delta_e(dark_a, dark_b), min(worst_delta_e(a, b), 13.5)
+                )
+
+    def test_text_is_readable_on_the_dark_backgrounds(self):
+        for background in (self.BACKGROUND, plotting.DARK_LEGEND_COLOR):
+            with self.subTest(background=background):
+                self.assertGreaterEqual(
+                    contrast(plotting.DARK_TEXT_COLOR, background), 7.0
+                )
+                self.assertGreaterEqual(
+                    contrast(plotting.DARK_SECONDARY_TEXT_COLOR, background), 4.5
+                )
+
+    def test_gridlines_are_subtle_but_visible(self):
+        self.assertGreater(contrast(plotting.DARK_GRID_COLOR, self.BACKGROUND), 1.3)
+        self.assertLess(contrast(plotting.DARK_GRID_COLOR, self.BACKGROUND), 3.0)
+
+    def test_neutrals_are_never_data_colors(self):
+        # The stylesheet finds neutral elements by these colors, so a series
+        # in one of them would be recolored as if it were a gridline
+        neutrals = {
+            plotting.BACKGROUND_COLOR,
+            plotting.TEXT_COLOR,
+            plotting.GRID_COLOR,
+            plotting.LEGEND_EDGE_COLOR,
+            plotting.SEGMENT_EDGE_COLOR,
+            SECONDARY_TEXT_COLOR,
+        }
+        self.assertEqual(neutrals & set(self.DATA_COLORS), set())
+
+
 class TestFormatBarTotal(unittest.TestCase):
     def test_scales(self):
         cases = {
@@ -180,9 +277,6 @@ class TestFormatBarTotal(unittest.TestCase):
 
 
 class TestPlotPayloadMassByYear(unittest.TestCase):
-    def tearDown(self):
-        plt.close("all")
-
     def test_missing_orbit_categories_plot_as_zero(self):
         # Only two of the ten categories are present; this used to raise KeyError
         df = build_dataframe(
@@ -204,7 +298,7 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
         frame = payload_mass_by_year_orbit(
             build_dataframe([_record(2015, "LEO", "CRS-6", 2000)])
         )
-        frame.loc[0, "Orbit"] = "Lunar"
+        frame.loc[0, Col.ORBIT] = "Lunar"
         with self.assertRaises(ValueError) as ctx:
             plot_payload_mass_to_orbit_by_year(frame)
         self.assertIn("Lunar", str(ctx.exception))
@@ -337,27 +431,140 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
         self.assertEqual([text.get_text() for text in fig.texts], ["Source: test"])
 
 
-class TestRenderIsolation(unittest.TestCase):
-    def tearDown(self):
-        plt.close("all")
+class TestBarLayoutStress(unittest.TestCase):
+    """Projected Starship-era data: 21 years, the newest above 20 million kg,
+    with every category in every year."""
 
+    def setUp(self):
+        years = range(2010, 2031)
+        rows = [
+            (year, category, _projected_total(year) * share)
+            for year in years
+            for category, share in zip(ORBIT_COLORS, _CATEGORY_SHARES, strict=True)
+        ]
+        frame = YearOrbitFrame(
+            pd.DataFrame(rows, columns=[Col.YEAR, Col.ORBIT, Col.MASS])
+        )
+        self.fig = plot_payload_mass_to_orbit_by_year(
+            frame, current_year=2030, caption="Source: test"
+        )
+        self.fig.draw_without_rendering()
+        self.ax = self.fig.axes[0]
+
+    def test_legend_covers_no_bars_or_totals(self):
+        legend = self.ax.get_legend()
+        assert legend is not None
+        legend_box = legend.get_window_extent()
+        for container in self.ax.containers:
+            for bar in container:
+                with self.subTest(category=container.get_label()):
+                    self.assertFalse(bar.get_window_extent().overlaps(legend_box))
+        for text in self.ax.texts:
+            with self.subTest(total=text.get_text()):
+                self.assertFalse(text.get_window_extent().overlaps(legend_box))
+
+    def test_everything_fits_in_the_figure(self):
+        figure_box = self.fig.bbox
+        legend = self.ax.get_legend()
+        assert legend is not None
+        artists = [
+            self.ax.title,
+            self.ax.yaxis.label,
+            legend,
+            *self.ax.get_xticklabels(),
+            *self.ax.texts,
+            *self.fig.texts,
+        ]
+        for artist in artists:
+            box = artist.get_window_extent()
+            with self.subTest(artist=artist):
+                self.assertGreaterEqual(box.x0, figure_box.x0)
+                self.assertLessEqual(box.x1, figure_box.x1)
+                self.assertGreaterEqual(box.y0, figure_box.y0)
+                self.assertLessEqual(box.y1, figure_box.y1)
+
+
+# Each category's share of a year's mass, in ORBIT_COLORS order
+_CATEGORY_SHARES = (0.62, 0.08, 0.12, 0.03, 0.02, 0.06, 0.01, 0.01, 0.04, 0.01)
+
+
+def _projected_total(year):
+    # Tiny early years, today's ~2.2 million kg, then 60% growth a year
+    if year <= 2016:
+        return 5_000 * (year - 2009)
+    return (
+        2_200_000 * 1.6 ** (year - 2025)
+        if year >= 2025
+        else 2_200_000 / 1.9 ** (2025 - year)
+    )
+
+
+class TestRenderIsolation(unittest.TestCase):
     def test_local_matplotlib_settings_dont_change_the_render(self):
         df = build_dataframe([_record(2025, "LEO", "Starlink A", 1000)])
-        with plt.rc_context(
+        with matplotlib.rc_context(
             {
                 "font.family": "serif",
                 "figure.facecolor": "black",
                 "axes.facecolor": "black",
                 "lines.linewidth": 5,
+                "grid.color": "red",
+                "text.color": "blue",
             }
         ):
             fig = plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit(df))
             # The caller's settings are back in force afterwards
-            self.assertEqual(plt.rcParams["font.family"], ["serif"])
+            self.assertEqual(matplotlib.rcParams["font.family"], ["serif"])
         ax = fig.axes[0]
         self.assertEqual(fig.get_facecolor(), mcolors.to_rgba("white"))
         self.assertEqual(ax.get_facecolor(), mcolors.to_rgba("white"))
         self.assertEqual(ax.title.get_fontfamily(), ["DejaVu Sans"])
+        # The neutrals the dark-mode stylesheet matches are pinned too
+        self.assertEqual(mcolors.to_hex(ax.title.get_color()), plotting.TEXT_COLOR)
+        gridline = ax.get_ygridlines()[0]
+        self.assertEqual(mcolors.to_hex(gridline.get_color()), plotting.GRID_COLOR)
+
+
+class TestObjectOrientedFigures(unittest.TestCase):
+    def test_figures_have_their_own_agg_canvas(self):
+        fig = plot_payload_mass_to_orbit_by_year(_frame({2025: 1000}))
+        self.assertIsInstance(fig, Figure)
+        self.assertIsInstance(fig.canvas, FigureCanvasAgg)
+        # Not registered with pyplot, so there is nothing to close
+        self.assertIsNone(fig.canvas.manager)
+
+    def test_building_and_saving_charts_never_imports_pyplot(self):
+        script = """
+import datetime, sys, tempfile
+from spacex_graphs import cli, output, plotting, transform
+from spacex_graphs.parsing import LaunchRecord
+today = datetime.date(2026, 10, 3)
+df = transform.build_dataframe(
+    [LaunchRecord(2026, "LEO", "Sat", 5, datetime.datetime(2026, 9, 1), "F9")]
+)
+figures = {
+    output.BY_YEAR_SVG: plotting.plot_payload_mass_to_orbit_by_year(
+        transform.payload_mass_by_year_orbit(df), current_year=2026
+    ),
+    output.CUMULATIVE_SVG: plotting.plot_cumulative_payload_mass_to_orbit(
+        transform.build_cumulative_frame(df, today), today
+    ),
+}
+with tempfile.TemporaryDirectory() as directory:
+    output.save_plots(figures, output_dir=directory)
+print("matplotlib.pyplot" in sys.modules)
+"""
+        # The interpreter and script are fixed by this test, not user input
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "False")
 
 
 if __name__ == "__main__":
