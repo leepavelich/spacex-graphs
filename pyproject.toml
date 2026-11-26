@@ -33,8 +33,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests select Agg before importing pyplot and may use plain assertions.
-"tests/*" = ["E402", "S101"]
+# Tests select Agg before importing pyplot and may use plain assertions or seeded RNGs.
+"tests/*" = ["E402", "S101", "S311"]
 # The legacy MD5 is a non-security cache filename. Drop when it is replaced.
 "spacex_graphs/cache.py" = ["S324"]
 
