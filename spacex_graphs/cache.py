@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from typing import IO, overload
 
@@ -54,8 +54,9 @@ def _read_meta(cache_meta_path: str) -> dict[str, str]:
         return {}
     if not isinstance(raw, dict):
         return {}
+    entries: Mapping[object, object] = raw
     meta: dict[str, str] = {}
-    for key, value in raw.items():
+    for key, value in entries.items():
         if not isinstance(key, str) or not isinstance(value, str):
             return {}
         meta[key] = value

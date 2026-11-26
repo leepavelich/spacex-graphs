@@ -4,9 +4,12 @@ import datetime
 import locale
 import random
 import unittest
+from typing import cast
+from unittest import mock
 
 from bs4 import BeautifulSoup
 
+from spacex_graphs.config import TableLayout
 from spacex_graphs.parsing import (
     _cell_text,
     _table_grid,
@@ -207,6 +210,14 @@ class TestParseStarshipRow(unittest.TestCase):
         html = _starship_table("<tr><td>September 2026</td><td>Block 3</td></tr>")
         self.assertEqual(parse_launch_page("starship", html), [])
 
+    def test_full_width_row_with_invalid_date_is_skipped(self):
+        html = _starship_table(
+            _starship_row(
+                "February 29, 2025", "Block 2 S35", "Sat", "1 kg", "LEO", "Success"
+            )
+        )
+        self.assertEqual(parse_launch_page("starship", html), [])
+
 
 class TestParseFalconPage(unittest.TestCase):
     def _parse(self, *rows):
@@ -377,6 +388,16 @@ class TestPageStructure(unittest.TestCase):
 
 
 class TestParseLaunchDatetimeEdgeCases(unittest.TestCase):
+    def test_earliest_date_and_first_unmarked_time_win(self):
+        for text in (
+            "29 February 2024 23:59 (Mar 1, 2024 00:01)",
+            "Feb 29, 2024 23:59 (1 March 2024 00:01)",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(
+                    parse_launch_datetime(text), datetime.datetime(2024, 2, 29, 23, 59)
+                )
+
     def test_one_digit_hours_and_seconds(self):
         self.assertEqual(
             parse_launch_datetime("4 June 2010 8:45"),
@@ -449,6 +470,22 @@ class TestParseLaunchDatetimeEdgeCases(unittest.TestCase):
         self.assertIsNone(parse_launch_datetime("1 May 0000"))
 
     def test_month_names_do_not_depend_on_the_locale(self):
+        def check_month_names():
+            self.assertEqual(
+                parse_launch_datetime("4 June 2010 18:45"),
+                datetime.datetime(2010, 6, 4, 18, 45),
+            )
+            self.assertIsNone(parse_launch_datetime("4 juin 2010"))
+
+        # Exercise the guarantee even in containers that only ship C locales.
+        # CPython's date, time and datetime strptime methods use _strptime.
+        forbidden = AssertionError("the parser must not consult the process locale")
+        with (
+            mock.patch("_strptime._strptime", side_effect=forbidden),
+            mock.patch.object(locale, "setlocale", side_effect=forbidden),
+        ):
+            check_month_names()
+
         original = locale.setlocale(locale.LC_TIME)
         for name in ("fr_FR.UTF-8", "de_DE.UTF-8", "ru_RU.UTF-8", "tr_TR.UTF-8"):
             try:
@@ -456,15 +493,10 @@ class TestParseLaunchDatetimeEdgeCases(unittest.TestCase):
             except locale.Error:
                 continue
             try:
-                self.assertEqual(
-                    parse_launch_datetime("4 June 2010 18:45"),
-                    datetime.datetime(2010, 6, 4, 18, 45),
-                )
-                self.assertIsNone(parse_launch_datetime("4 juin 2010"))
+                check_month_names()
             finally:
                 locale.setlocale(locale.LC_TIME, original)
-            return
-        self.skipTest("no non-English locale is installed")
+            break
 
 
 class TestParsePayloadMassEdgeCases(unittest.TestCase):
@@ -504,6 +536,15 @@ class TestParsePayloadMassEdgeCases(unittest.TestCase):
 
     def test_spaced_en_dash_range(self):
         self.assertEqual(parse_payload_mass_text("5,000 – 6,000 kg"), 5500)
+
+    def test_range_cutoff_includes_exactly_ten_times_the_low_end(self):
+        for text, mass in (
+            ("500–5,000 kg", 2750),
+            ("500–5,001 kg", 5001),
+            ("5,000–500 kg", 500),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(parse_payload_mass_text(text), mass)
 
     def test_unicode_hyphens(self):
         self.assertEqual(parse_payload_mass_text("5,000\u20116,000 kg"), 5500)
@@ -674,7 +715,7 @@ class TestTableStructure(unittest.TestCase):
 
     def test_unknown_layout_is_rejected(self):
         with self.assertRaises(AssertionError):
-            parse_launch_page("atlas", "")  # type: ignore[arg-type]
+            parse_launch_page(cast(TableLayout, "atlas"), "")
 
 
 class TestMultiPayloadLaunches(unittest.TestCase):
@@ -758,6 +799,16 @@ class TestMultiPayloadLaunches(unittest.TestCase):
         (record,) = parse_launch_page("falcon", html)
         self.assertIsNone(record.payload_mass)
 
+    def test_empty_secondary_payload_cells_do_not_add_separators(self):
+        html = _starship_table(
+            self._launch([("Sat A", "0 kg", "Success"), (" ", " ", " ")])
+        )
+        (record,) = parse_launch_page("falcon", html)
+        self.assertEqual(
+            (record.payload, record.payload_mass, record.outcome),
+            ("Sat A", 0, "Success"),
+        )
+
     def test_mass_cell_shared_by_payloads_counts_once(self):
         first = _cells_row(
             ("3 January 2025", 'rowspan="2"'),
@@ -772,6 +823,16 @@ class TestMultiPayloadLaunches(unittest.TestCase):
         )
         second = _cells_row("Sat B", "SpaceX")
         (record,) = parse_launch_page("falcon", _starship_table(first, second))
+        self.assertEqual(record.payload, "Sat A + Sat B")
+        self.assertEqual(record.payload_mass, 1000)
+
+    def test_equal_masses_in_separate_payload_cells_are_both_counted(self):
+        html = _starship_table(
+            self._launch(
+                [("Sat A", "500 kg", "Success"), ("Sat B", "500 kg", "Success")]
+            )
+        )
+        (record,) = parse_launch_page("falcon", html)
         self.assertEqual(record.payload, "Sat A + Sat B")
         self.assertEqual(record.payload_mass, 1000)
 

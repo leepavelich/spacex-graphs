@@ -327,14 +327,13 @@ def _launch_rows(table: Tag) -> Iterator[list[list[Tag]]]:
         yield group
 
 
-def _distinct_texts(
+def _distinct_cell_texts(
     rows: Sequence[Sequence[Tag]], index: int, line_separator: str = " "
-) -> list[str]:
+) -> Iterator[str]:
     """The non-empty texts of a column's distinct cells across a launch's rows.
 
     A rowspan cell shared by several rows counts once.
     """
-    texts: list[str] = []
     seen: list[Tag] = []
     for row in rows:
         cell = row[index]
@@ -342,9 +341,13 @@ def _distinct_texts(
             continue
         seen.append(cell)
         text = _cell_text(cell, line_separator)
-        if text and text not in texts:
-            texts.append(text)
-    return texts
+        if text:
+            yield text
+
+
+def _distinct_texts(rows: Sequence[Sequence[Tag]], index: int) -> list[str]:
+    """The unique non-empty texts of a column, in table order."""
+    return list(dict.fromkeys(_distinct_cell_texts(rows, index)))
 
 
 def _total_mass(rows: Sequence[Sequence[Tag]], index: int) -> int | None:
@@ -356,7 +359,7 @@ def _total_mass(rows: Sequence[Sequence[Tag]], index: int) -> int | None:
     # "; " keeps separate lines from being read as one space-grouped number
     masses = [
         mass
-        for text in _distinct_texts(rows, index, "; ")
+        for text in _distinct_cell_texts(rows, index, "; ")
         if (mass := parse_payload_mass_text(text)) is not None
     ]
     return sum(masses) if masses else None

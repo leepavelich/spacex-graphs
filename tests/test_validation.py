@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from spacex_graphs.errors import ImplausibleMassError, OutcomeIntegrityError
+from spacex_graphs.output import published_launches
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.validation import (
     EmptyPageError,
@@ -73,6 +74,11 @@ class TestDropDuplicateLaunches(unittest.TestCase):
             drop_duplicate_launches([unknown, unrelated, known, unknown]),
             ([known, unrelated], 2),
         )
+
+    def test_equal_completeness_keeps_first_even_when_mass_is_zero(self):
+        first = _launch(2026)._replace(payload_mass=0)
+        later = first._replace(payload="Different listing", payload_mass=10)
+        self.assertEqual(drop_duplicate_launches([first, later]), ([first], 1))
 
 
 class TestDropFutureLaunches(unittest.TestCase):
@@ -146,13 +152,21 @@ class TestOutcomeAndMassIntegrity(unittest.TestCase):
                     launch._replace(payload_mass=mass) for mass in (None, 0, ceiling)
                 )
                 for mass in (-1, ceiling + 1):
-                    with self.assertRaisesRegex(ImplausibleMassError, vehicle):
+                    with self.assertRaises(ImplausibleMassError) as ctx:
                         check_payload_masses([launch._replace(payload_mass=mass)])
+                    self.assertIn(
+                        f"2026-06-01 {vehicle}: {mass:,} kg (expected 0–{ceiling:,} kg)",
+                        str(ctx.exception),
+                    )
 
     def test_all_committed_csv_rows_pass_the_integrity_checks(self):
         path = Path(__file__).resolve().parents[1] / "outputs" / "spacex_launches.csv"
+        baseline = published_launches(str(path.parent))
         if not path.exists():
-            self.skipTest("the published baseline was reset")
+            # A deliberate reset leaves no baseline until the next daily run.
+            self.assertEqual(baseline, [])
+            check_published_launches(iter(()), baseline)
+            return
         with path.open(encoding="utf-8", newline="") as f:
             rows = list(csv.DictReader(f))
         records = [
@@ -161,16 +175,30 @@ class TestOutcomeAndMassIntegrity(unittest.TestCase):
                 row["Orbit"],
                 row["Payload"],
                 int(row["Payload Mass (kg)"]) if row["Payload Mass (kg)"] else None,
-                datetime.datetime.fromisoformat(row["Date"]),
+                datetime.datetime.fromisoformat(f"{row['Date']}T{row['Time (UTC)']}"),
                 row["Vehicle"],
                 row["Outcome"],
             )
             for row in rows
         ]
         self.assertGreater(len(records), 0)
+        self.assertEqual(len(records), len(baseline))
         check_payload_masses(records)
         check_outcomes(records)
         self.assertEqual(drop_unlaunched(records), (records, 0))
+        check_published_launches(iter(records), baseline)
+        revisions = {4700: 4872, 500: 200, 16500: 14000}
+        check_published_launches(
+            (
+                record._replace(
+                    payload_mass=revisions.get(record.payload_mass, record.payload_mass)
+                )
+                if record.payload_mass is not None
+                else record
+                for record in records
+            ),
+            baseline,
+        )
 
 
 def _published(launch, mass=1):
@@ -249,6 +277,8 @@ class TestCheckPublishedLaunches(unittest.TestCase):
         with self.assertRaises(PublishedLaunchesLostError) as ctx:
             check_published_launches([], self.published)
         self.assertIn("30 published launches are missing", str(ctx.exception))
+        self.assertIn("2025-01-05", str(ctx.exception))
+        self.assertNotIn("2025-01-06", str(ctx.exception))
         self.assertIn("; ...", str(ctx.exception))
 
     def test_long_mass_loss_lists_are_truncated(self):
@@ -260,6 +290,133 @@ class TestCheckPublishedLaunches(unittest.TestCase):
         self.assertIn("2025-01-05", message)
         self.assertNotIn("2025-01-06", message)
         self.assertIn("; ...", message)
+
+    def test_mass_drop_requires_both_thresholds(self):
+        launch = _launch(2026, 5, 5, payload="A payload")
+        for old, new in (
+            (4700, 4872),
+            (500, 200),
+            (16500, 14000),
+            (5000, 2500),  # exactly 50%, but enough kg
+            (1500, 501),  # more than 50%, but 999 kg
+            (0, 0),
+        ):
+            with self.subTest(old=old, new=new):
+                check_published_launches(
+                    [launch._replace(payload_mass=new)], [_published(launch, old)]
+                )
+
+        for old, new in (
+            (16500, 1650),
+            (5000, 500),
+            (5000, 2499),  # just over 50%
+            (1500, 500),  # exactly 1000 kg
+            (1500, 0),  # zero is a known mass, not a missing one
+        ):
+            with (
+                self.subTest(old=old, new=new),
+                self.assertRaises(PublishedLaunchesLostError) as ctx,
+            ):
+                check_published_launches(
+                    [launch._replace(payload_mass=new)], [_published(launch, old)]
+                )
+            self.assertIn(
+                "1 published launches have large mass drops", str(ctx.exception)
+            )
+            self.assertIn(
+                f"2026-05-05 Falcon 9 (A payload): {old:,} kg -> {new:,} kg",
+                str(ctx.exception),
+            )
+
+    def test_unambiguous_same_day_payload_takes_precedence_over_mass_rank(self):
+        heavy = _launch(2026, 5, 5, payload="Heavy")
+        light = heavy._replace(
+            payload="Light", launch_datetime=heavy.launch_datetime.replace(hour=14)
+        )
+        published = [_published(heavy, 16500), _published(light, 5000)]
+        check_published_launches(
+            [light._replace(payload_mass=5000), heavy._replace(payload_mass=16500)],
+            published,
+        )
+        # Sorting all masses before honoring the payload identities would miss this.
+        with self.assertRaisesRegex(
+            PublishedLaunchesLostError, r"\(Heavy\): 16,500 kg -> 5,000 kg"
+        ):
+            check_published_launches(
+                [light._replace(payload_mass=16500), heavy._replace(payload_mass=5000)],
+                published,
+            )
+
+    def test_renamed_payloads_use_mass_order_within_the_same_date_and_vehicle(self):
+        heavy = _launch(2026, 5, 5, payload="Heavy")
+        light = heavy._replace(
+            payload="Light", launch_datetime=heavy.launch_datetime.replace(hour=14)
+        )
+        published = [_published(heavy, 16500), _published(light, 5000)]
+        revised_heavy = heavy._replace(payload="Revised Heavy", payload_mass=14000)
+        revised_light = light._replace(payload="Revised Light", payload_mass=4872)
+        extra = light._replace(
+            payload="New",
+            payload_mass=500,
+            launch_datetime=light.launch_datetime.replace(hour=16),
+        )
+        check_published_launches([extra, revised_light, revised_heavy], published)
+
+        different_vehicle = extra._replace(vehicle="Falcon Heavy", payload_mass=5000)
+        regressed_light = revised_light._replace(payload_mass=500)
+        with self.assertRaisesRegex(
+            PublishedLaunchesLostError, r"\(Light\): 5,000 kg -> 500 kg"
+        ):
+            check_published_launches(
+                [different_vehicle, regressed_light, revised_heavy], published
+            )
+
+    def test_non_unique_payload_name_cannot_claim_an_exact_match(self):
+        heavy = _launch(2026, 5, 5, payload="Same")._replace(payload_mass=16500)
+        light = heavy._replace(
+            payload_mass=5000, launch_datetime=heavy.launch_datetime.replace(hour=14)
+        )
+        check_published_launches(
+            [light, heavy._replace(payload="Renamed")],
+            [_published(heavy, 16500), _published(light, 5000)],
+        )
+        check_published_launches(
+            [heavy, light],
+            [
+                _published(heavy, 16500),
+                _published(light._replace(payload="Renamed"), 5000),
+            ],
+        )
+
+    def test_exact_match_is_not_reused_for_a_renamed_payload(self):
+        heavy = _launch(2026, 5, 5, payload="Heavy")._replace(payload_mass=16500)
+        light = heavy._replace(
+            payload="Light", launch_datetime=heavy.launch_datetime.replace(hour=14)
+        )
+        renamed = light._replace(payload="Renamed", payload_mass=500)
+        with self.assertRaisesRegex(
+            PublishedLaunchesLostError, r"\(Light\): 5,000 kg -> 500 kg"
+        ):
+            check_published_launches(
+                [heavy, renamed], [_published(heavy, 16500), _published(light, 5000)]
+            )
+
+    def test_mass_drop_message_names_at_most_five_launches(self):
+        for count in (5, 6):
+            with (
+                self.subTest(count=count),
+                self.assertRaises(PublishedLaunchesLostError) as ctx,
+            ):
+                changed = [r._replace(payload_mass=500) for r in self.records[:count]]
+                check_published_launches(
+                    changed, [_published(r, 5000) for r in changed]
+                )
+            message = str(ctx.exception)
+            self.assertIn(f"{count} published launches have large mass drops", message)
+            self.assertEqual(message.count("5,000 kg -> 500 kg"), 5)
+            self.assertIn("2025-01-05", message)
+            self.assertNotIn("2025-01-06", message)
+            self.assertEqual("; ..." in message, count == 6)
 
 
 class TestCheckRecentLaunch(unittest.TestCase):
@@ -286,6 +443,9 @@ class TestPolicyValues(unittest.TestCase):
         self.assertEqual(config.MAX_DAYS_SINCE_LAUNCH, 30)
         self.assertEqual(config.STALE_CACHE_LIMIT, datetime.timedelta(days=3))
         self.assertEqual(config.REQUEST_TIMEOUT, 10)
+        self.assertEqual(config.MAX_UNRECOGNIZED_OUTCOME_FRACTION, 0.05)
+        self.assertEqual(config.MAX_PUBLISHED_MASS_DROP_FRACTION, 0.5)
+        self.assertEqual(config.MIN_PUBLISHED_MASS_DROP_KG, 1_000)
         self.assertEqual(config.MIN_CUMULATIVE_YEAR, 2017)
         self.assertEqual(config.HIGHLIGHT_FROM_YEAR, 2020)
 
