@@ -1,19 +1,32 @@
-"""Builds the matplotlib figures."""
+"""Builds the matplotlib figures.
 
-import calendar
+Figures are built with matplotlib's object-oriented API only: each Figure gets
+its own Agg canvas and is never registered with pyplot, so building one starts
+no GUI backend and leaves nothing to close afterwards.
+"""
+
 import datetime
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from types import MappingProxyType
+from typing import Literal
 
-import matplotlib.pyplot as plt
-import pandas as pd
+from matplotlib import style
 from matplotlib.axes import Axes
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
+from matplotlib.text import Annotation
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 from spacex_graphs.config import HIGHLIGHT_FROM_YEAR
-from spacex_graphs.transform import Col
+from spacex_graphs.transform import (
+    DAYS_IN_LEAP_YEAR,
+    LEAP_REFERENCE_YEAR,
+    Col,
+    CumulativeFrame,
+    YearOrbitFrame,
+    calendar_day,
+)
 
 # Each orbit category's color, keyed by name so that reordering
 # config.ORBIT_CATEGORIES can never hand a category another's color. Listed in
@@ -56,16 +69,56 @@ OLDER_YEARS_COLOR = "#898781"
 # Secondary text (captions, bar totals): 7:1 against white, passing WCAG AAA
 SECONDARY_TEXT_COLOR = "#595959"
 
+# The light theme's neutrals, which are matplotlib's defaults. They are pinned
+# in _CHART_STYLE because output's dark-mode stylesheet finds the elements to
+# recolor by these exact values.
+BACKGROUND_COLOR = "#ffffff"
+TEXT_COLOR = "#000000"
+GRID_COLOR = "#b0b0b0"
+LEGEND_EDGE_COLOR = "#cccccc"
+# Thin edges between stacked bar segments, in the background color
+SEGMENT_EDGE_COLOR = BACKGROUND_COLOR
+
+# The dark theme, shown when the viewer prefers a dark color scheme: GitHub's
+# dark canvas, with text that keeps at least 7:1 (and secondary text 4.5:1)
+DARK_BACKGROUND_COLOR = "#0d1117"
+DARK_LEGEND_COLOR = "#161b22"
+DARK_TEXT_COLOR = "#e6edf3"
+DARK_SECONDARY_TEXT_COLOR = "#9ca3af"
+DARK_GRID_COLOR = "#30363d"
+
+# Data colors with less than 3:1 contrast against the dark background, and the
+# lighter shades that replace them there. The dark palettes keep the same
+# separation under simulated color vision deficiencies as the light ones,
+# which the tests check.
+DARK_MODE_DATA_COLORS: MappingProxyType[str, str] = MappingProxyType(
+    {
+        "#784b87": "#7e528d",  # GTO/GEO plum, a shade lighter
+        "#2d693c": "#38c75c",  # BLT forest green -> bright green
+        "#964b00": "#9b4e00",  # Transatmospheric brown, a shade lighter
+        "#4a3aa7": "#6255b0",  # the eighth year's violet, a shade lighter
+    }
+)
+
 # Pinned so that a developer's own matplotlibrc can't change the renders.
 # DejaVu Sans ships with matplotlib, so every machine has it.
 _CHART_STYLE = {
     "font.family": ["DejaVu Sans"],
-    "figure.facecolor": "white",
-    "axes.facecolor": "white",
+    "figure.facecolor": BACKGROUND_COLOR,
+    "axes.facecolor": BACKGROUND_COLOR,
+    "text.color": TEXT_COLOR,
+    "axes.labelcolor": TEXT_COLOR,
+    "axes.edgecolor": TEXT_COLOR,
+    "xtick.color": TEXT_COLOR,
+    "ytick.color": TEXT_COLOR,
+    "grid.color": GRID_COLOR,
+    "legend.edgecolor": LEGEND_EDGE_COLOR,
 }
 
 # Bar totals sit this far above the tallest bar's top, as a fraction of it
 _BAR_HEADROOM = 0.08
+# Each bar's width, as a fraction of the distance between neighboring bars
+_BAR_WIDTH = 0.5
 
 # The current year's cumulative line stands out from the others
 _LINE_WIDTH = 1.5
@@ -75,24 +128,41 @@ _OLDER_YEARS_LINE_WIDTH = 1.0
 # Days of padding either side of the cumulative chart's year
 _DAY_PADDING = 6
 
+# Direct year labels in the cumulative chart's right margin: their font size,
+# how far right of the axes they sit, and the least distance between the
+# centers of two labels, all in points
+_END_LABEL_FONT_SIZE = 8
+_END_LABEL_OFFSET = 10
+_END_LABEL_SPACING = _END_LABEL_FONT_SIZE * 1.3
+
 
 @contextmanager
 def _chart_style() -> Iterator[None]:
     """Applies matplotlib's defaults plus _CHART_STYLE while a figure is built."""
-    with plt.style.context(["default", _CHART_STYLE]):
+    with style.context(["default", _CHART_STYLE]):
         yield
 
 
 def create_figure(
-    title: str, ylabel: str, *, xlabel: str = "", size: tuple[float, float] = (10, 7)
+    title: str,
+    ylabel: str,
+    *,
+    xlabel: str = "",
+    size: tuple[float, float] = (10, 7),
+    grid_axis: Literal["both", "x", "y"] = "both",
 ) -> tuple[Figure, Axes]:
     """Creates a figure with the given title and axis labels, with whole-number,
-    thousands-separated y ticks and gridlines drawn behind the data."""
-    fig, ax = plt.subplots(figsize=size)
+    thousands-separated y ticks and gridlines drawn behind the data.
+
+    The figure has its own Agg canvas and is not managed by pyplot.
+    """
+    fig = Figure(figsize=size)
+    FigureCanvasAgg(fig)
+    ax = fig.add_subplot()
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.grid(True)
+    ax.grid(True, axis=grid_axis)
     ax.set_axisbelow(True)
     # Whole-number ticks only, so a tiny range can't repeat "0" down the axis
     ax.yaxis.set_major_locator(
@@ -152,7 +222,7 @@ def _format_bar_total(total: float) -> str:
 
 
 def plot_payload_mass_to_orbit_by_year(
-    payload_mass_by_year_orbit: pd.DataFrame,
+    payload_mass_by_year_orbit: YearOrbitFrame,
     *,
     current_year: int | None = None,
     caption: str = "",
@@ -170,10 +240,17 @@ def plot_payload_mass_to_orbit_by_year(
 
 
 def _plot_by_year(
-    payload_mass_by_year_orbit: pd.DataFrame, *, current_year: int | None, caption: str
+    payload_mass_by_year_orbit: YearOrbitFrame,
+    *,
+    current_year: int | None,
+    caption: str,
 ) -> Figure:
+    # Horizontal gridlines only, behind the bars, to help read their heights;
+    # vertical ones would run through the bars
     fig, ax = create_figure(
-        "SpaceX Payload Mass Launched by Year and Destination", "Payload Mass (kg)"
+        "SpaceX Payload Mass Launched by Year and Destination",
+        "Payload Mass (kg)",
+        grid_axis="y",
     )
     unknown = set(payload_mass_by_year_orbit[Col.ORBIT]) - set(ORBIT_COLORS)
     if unknown:
@@ -195,18 +272,23 @@ def _plot_by_year(
         .fillna(0)
     )
 
-    pivot_df.plot(
-        kind="bar",
-        stacked=True,
-        color=[ORBIT_COLORS[col] for col in ordered_columns],
-        # Thin white edges keep neighboring segments cleanly apart
-        edgecolor="white",
-        linewidth=0.35,
-        ax=ax,
-    )
-    # pandas turns the grid off; horizontal lines, behind the bars, help read
-    # their heights
-    ax.grid(True, axis="y")
+    # Stack the categories in legend order: each segment starts where the
+    # categories before it end
+    positions = range(len(pivot_df.index))
+    bottoms = pivot_df.cumsum(axis=1) - pivot_df
+    for category in ordered_columns:
+        ax.bar(
+            positions,
+            pivot_df[category],
+            width=_BAR_WIDTH,
+            bottom=bottoms[category],
+            color=ORBIT_COLORS[category],
+            # Thin edges keep neighboring segments cleanly apart
+            edgecolor=SEGMENT_EDGE_COLOR,
+            linewidth=0.35,
+            label=category,
+        )
+    ax.set_xlim(-0.5, len(pivot_df.index) - 0.5)
 
     # Label each bar with the year's total, a few points above the bar so the
     # gap looks the same whatever the axis scale
@@ -236,8 +318,6 @@ def _plot_by_year(
         ha="right",
         rotation_mode="anchor",
     )
-    # pandas names the x axis after the index; the years speak for themselves
-    ax.set_xlabel("")
     # List categories top to bottom in the order they're stacked on the bars
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(handles[::-1], labels[::-1], title="Destination", loc="upper left")
@@ -246,19 +326,22 @@ def _plot_by_year(
 
 
 def plot_cumulative_payload_mass_to_orbit(
-    cumulative: pd.DataFrame, today: datetime.date, *, caption: str = ""
+    cumulative: CumulativeFrame, today: datetime.date, *, caption: str = ""
 ) -> Figure:
     """Plots cumulative launched payload mass by year as line charts.
 
-    Expects the frame from transform.build_cumulative_frame. The current
-    year's line is drawn thicker, with a dot where it ends today.
+    Expects the frame from transform.build_cumulative_frame, whose days are on
+    one shared leap-year calendar, so every year's lines and the month ticks
+    line up date for date. The current year's line is drawn thicker, with a
+    dot where it ends today, and each highlighted year is labelled at its
+    line's end in the right margin.
     """
     with _chart_style():
         return _plot_cumulative(cumulative, today, caption=caption)
 
 
 def _plot_cumulative(
-    cumulative: pd.DataFrame, today: datetime.date, *, caption: str
+    cumulative: CumulativeFrame, today: datetime.date, *, caption: str
 ) -> Figure:
     fig, ax = create_figure(
         "SpaceX Cumulative Payload Mass Launched by Year",
@@ -281,6 +364,8 @@ def _plot_cumulative(
         else "".join(map(str, older_years))
     )
 
+    # Each highlighted year's label, final total, and color, newest first
+    line_ends: list[tuple[str, float, str]] = []
     for year, points in cumulative.groupby(Col.YEAR):
         if year in year_color_map:
             label = str(year)
@@ -300,6 +385,8 @@ def _plot_cumulative(
             color=color,
             linewidth=linewidth,
         )
+        if year in year_color_map:
+            line_ends.append((label, points[Col.CUMULATIVE_MASS].iloc[-1], color))
         if year == today.year:
             # Mark where this year's line ends: today's total so far
             ax.scatter(
@@ -318,17 +405,84 @@ def _plot_cumulative(
     else:
         _show_no_data(ax)
 
-    # Tick the first of every other month, positioned for this year's calendar
-    # (from March on, a leap year's months start a day later)
-    months_to_label = [datetime.date(today.year, month, 1) for month in range(1, 13, 2)]
+    # Tick the first of every other month on the shared leap-year calendar the
+    # lines use, so a tick marks the same date in every year
+    months_to_label = [
+        datetime.date(LEAP_REFERENCE_YEAR, month, 1) for month in range(1, 13, 2)
+    ]
     ax.set_xticks(
-        [date.timetuple().tm_yday for date in months_to_label],
+        [calendar_day(date) for date in months_to_label],
         [date.strftime("%b 1") for date in months_to_label],
     )
 
     # Span the whole year, with equal padding either side
-    days_in_year = 366 if calendar.isleap(today.year) else 365
-    ax.set_xlim(1 - _DAY_PADDING, days_in_year + _DAY_PADDING)
+    ax.set_xlim(1 - _DAY_PADDING, DAYS_IN_LEAP_YEAR + _DAY_PADDING)
 
+    labels = _label_line_ends(ax, sorted(line_ends, reverse=True))
+    # Lay out first: the labels' spacing depends on the axes' final height
     _finish(fig, caption)
+    _spread_labels(fig, ax, labels)
     return fig
+
+
+def _label_line_ends(
+    ax: Axes, line_ends: Sequence[tuple[str, float, str]]
+) -> list[Annotation]:
+    """Labels each line in the right margin, level with its final total.
+
+    A short leader in the line's color joins the label to the axes, so the
+    label still points at its line once _spread_labels nudges it.
+    """
+    return [
+        ax.annotate(
+            label,
+            xy=(1, total),
+            # x in axes coordinates (the right edge), y in data
+            xycoords=ax.get_yaxis_transform(),
+            xytext=(_END_LABEL_OFFSET, 0),
+            textcoords="offset points",
+            ha="left",
+            va="center",
+            fontsize=_END_LABEL_FONT_SIZE,
+            arrowprops={
+                "arrowstyle": "-",
+                "color": color,
+                "linewidth": 1.2,
+                "shrinkA": 2,
+                "shrinkB": 0,
+                # The leader starts at the label's left edge, not under it
+                "relpos": (0, 0.5),
+            },
+            annotation_clip=False,
+        )
+        for label, total, color in line_ends
+    ]
+
+
+def _spread_labels(fig: Figure, ax: Axes, labels: Sequence[Annotation]) -> None:
+    """Nudges the direct labels apart vertically so that none overlap, while
+    keeping every label within the axes' height."""
+    if not labels:
+        return
+    # Applies any pending autoscaling, so transData maps to the final limits
+    ax.get_ylim()
+    points_per_pixel = 72 / fig.dpi
+    bottom = ax.bbox.y0
+    height = ax.bbox.height * points_per_pixel
+    wanted = [
+        (ax.transData.transform((0, label.xy[1]))[1] - bottom) * points_per_pixel
+        for label in labels
+    ]
+    order = sorted(range(len(labels)), key=lambda i: wanted[i])
+    placed = [wanted[i] for i in order]
+    half = _END_LABEL_SPACING / 2
+    # Push labels up from the bottom so each clears the one below it, then
+    # down from the top so none ends up above the axes
+    placed[0] = max(placed[0], half)
+    for k in range(1, len(placed)):
+        placed[k] = max(placed[k], placed[k - 1] + _END_LABEL_SPACING)
+    placed[-1] = min(placed[-1], height - half)
+    for k in range(len(placed) - 2, -1, -1):
+        placed[k] = min(placed[k], placed[k + 1] - _END_LABEL_SPACING)
+    for k, i in enumerate(order):
+        labels[i].xyann = (_END_LABEL_OFFSET, placed[k] - wanted[i])

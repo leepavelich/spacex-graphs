@@ -6,6 +6,7 @@ import pathlib
 import tempfile
 import unittest
 from unittest import mock
+from xml.etree import ElementTree
 
 import matplotlib
 
@@ -21,6 +22,7 @@ from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.validation import PublishedLaunch
 
 TODAY = datetime.date(2026, 10, 3)
+SVG = "http://www.w3.org/2000/svg"
 
 
 def _launch(year, month=6, day=1, payload="Starlink", vehicle="Falcon 9"):
@@ -216,7 +218,7 @@ class TestMain(unittest.TestCase):
         with (
             mock.patch.object(cli, "run") as run,
             mock.patch.object(cli, "_configure_logging") as configure,
-            mock.patch.object(plt, "get_backend", return_value="TkAgg"),
+            mock.patch.object(matplotlib, "get_backend", return_value="TkAgg"),
             mock.patch("sys.argv", ["graphs.py"]),
             mock.patch.dict(os.environ, {}, clear=True),
         ):
@@ -327,7 +329,8 @@ class TestRun(unittest.TestCase):
                 cli, "load_launch_records", lambda today, **dirs: self.records
             )
         )
-        self.show = self.enterContext(mock.patch("spacex_graphs.cli.plt.show"))
+        # Display mode imports pyplot when it runs, so patch it at the source
+        self.show = self.enterContext(mock.patch("matplotlib.pyplot.show"))
         self.addCleanup(plt.close, "all")
 
     def _run(self, save_output=True):
@@ -391,8 +394,23 @@ class TestRun(unittest.TestCase):
         self.assertGreater(os.path.getmtime(svg), 0)
 
     def test_display_mode_shows_and_writes_nothing(self):
+        existing_figures = plt.get_fignums()
         self._run(save_output=False)
         self.show.assert_called_once()
+        # Both charts were handed to pyplot to get windows
+        self.assertEqual(len(plt.get_fignums()), len(existing_figures) + 2)
+        titles = {
+            plt.figure(num).axes[0].get_title()
+            for num in plt.get_fignums()
+            if num not in existing_figures
+        }
+        self.assertEqual(
+            titles,
+            {
+                "SpaceX Payload Mass Launched by Year and Destination",
+                "SpaceX Cumulative Payload Mass Launched by Year",
+            },
+        )
         self.assertEqual(self._outputs(), [])
         self.assertFalse(os.path.exists(self.output_dir))
 
@@ -508,6 +526,33 @@ class TestRunWiring(unittest.TestCase):
         caption = by_year.call_args.kwargs["caption"]
         self.assertIn("through 30 September 2026", caption)
         self.assertEqual(cumulative.call_args.kwargs["caption"], caption)
+
+    def test_svgs_are_titled_and_described_for_screen_readers(self):
+        records = [
+            LaunchRecord(2026, "LEO", "Sat", 5, datetime.datetime(2026, 9, 30), "F9")
+        ]
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(
+                cli, "load_launch_records", lambda today, **dirs: records
+            ),
+        ):
+            cli.run(True, TODAY, output_dir=tmp, cache_dir=tmp)
+            descriptions = {}
+            for name in (output.BY_YEAR_SVG, output.CUMULATIVE_SVG):
+                # The SVG was just written by this test, not untrusted input
+                root = ElementTree.parse(os.path.join(tmp, name)).getroot()  # noqa: S314
+                desc = root.find(f"{{{SVG}}}desc")
+                assert desc is not None and desc.text is not None
+                descriptions[name] = desc.text
+        self.assertTrue(
+            descriptions[output.BY_YEAR_SVG].startswith("Stacked bar chart")
+        )
+        self.assertTrue(descriptions[output.CUMULATIVE_SVG].startswith("Line chart"))
+        for description in descriptions.values():
+            # The summary comes first, then the caption
+            self.assertIn("2026", description)
+            self.assertTrue(description.endswith("count as 0 kg."))
 
 
 class TestJobSummary(unittest.TestCase):
