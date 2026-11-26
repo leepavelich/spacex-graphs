@@ -4,8 +4,8 @@
 -c requirements.txt
 coverage==7.17.3
 mypy==2.4.1
-pandas-stubs
-pip-audit
+pandas-stubs==3.1.0.261029
+pip-audit==2.10.1
 ruff==0.17.5
 uv==0.13.8
-types-requests
+types-requests==2.33.0.20261030

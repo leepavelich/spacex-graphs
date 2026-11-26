@@ -44,6 +44,11 @@ jobs:
       - name: Type Check
         run: mypy
 
+      - name: Generate a Non-English Test Locale
+        run: |
+          sudo localedef -i fr_FR -f UTF-8 fr_FR.UTF-8
+          locale -a | grep -Fx fr_FR.utf8
+
       - name: Run Tests and Enforce Coverage
         run: |
           coverage run --branch -m unittest discover -s tests -v
@@ -60,6 +65,26 @@ jobs:
         run: |
           scripts/update-locks.sh
           git diff --exit-code -- requirements.txt requirements-dev.txt
+
+  lint-infra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint GitHub Actions Workflows
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" -w /repo \
+            rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+
+      - name: Lint Dockerfile
+        run: |
+          docker run --rm -i \
+            hadolint/hadolint@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d \
+            < Dockerfile
 
   docker:
     runs-on: ubuntu-latest
