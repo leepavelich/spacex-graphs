@@ -5,9 +5,11 @@ on:
     - cron: "15 11 * * *" # Runs at 11:15 UTC every day
   workflow_dispatch:
 
-# A manual dispatch overlapping the scheduled run would race the push
+permissions: {}
+
+# Serialize publishers to the same branch without blocking feature-branch runs.
 concurrency:
-  group: auto-update
+  group: auto-update-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -32,45 +34,85 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Install Dependencies
-        run: pip install -r requirements.txt
+        run: pip install --require-hashes -r requirements.txt
 
       - name: Run Tests
         run: python -m unittest discover -s tests
 
-      - name: Cache Wikipedia data
+      - name: Get UTC Cache Date
+        id: cache-date
+        run: date -u '+date=%Y-%m-%d' >> "$GITHUB_OUTPUT"
+
+      - name: Cache Wikipedia Data
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache
-          key: wikipedia-cache-${{ github.run_id }}
+          # Cache keys are immutable. A new daily key saves fresh verification
+          # timestamps without uploading another cache on every same-day rerun.
+          key: wikipedia-daily-${{ steps.cache-date.outputs.date }}
           restore-keys: |
+            wikipedia-daily-
             wikipedia-cache-
 
-      - name: Run Script
+      - name: Generate Graphs Without Publishing (Tag Dispatch)
+        if: github.ref_type != 'branch'
         run: python3 graphs.py --output
 
-      - name: Commit and Push Changes
-        uses: stefanzweifel/git-auto-commit-action@d0b01107b5db882071f96de5dd4b54961ea93f4c # v7.2.1
-        with:
-          commit_message: "chore(outputs): update graphs by scheduler"
-          branch: ${{ github.ref }}
-          file_pattern: outputs/*.svg outputs/*.csv
-          commit_user_name: GitHub Actions
-          commit_user_email: actions@github.com
-          commit_author: GitHub Actions <actions@github.com>
+      - name: Generate and Publish Graphs
+        if: github.ref_type == 'branch'
+        shell: bash
+        run: |
+          git config user.name 'GitHub Actions'
+          git config user.email 'actions@github.com'
+          for attempt in {1..5}; do
+            python3 graphs.py --output
+            git add -- 'outputs/*.svg' 'outputs/*.csv'
+            if git diff --cached --quiet; then
+              exit 0
+            fi
+
+            base=$(git rev-parse HEAD)
+            git commit -m 'chore(outputs): update graphs by scheduler'
+            if git push origin "HEAD:$GITHUB_REF"; then
+              exit 0
+            fi
+
+            git fetch --no-tags origin "$GITHUB_REF"
+            tip=$(git rev-parse FETCH_HEAD)
+            if git merge-base --is-ancestor HEAD "$tip"; then
+              exit 0 # The server accepted the commit despite a failed response.
+            fi
+            if [[ "$tip" == "$base" || "$attempt" == 5 ]]; then
+              exit 1
+            fi
+
+            # Drop only this runner's unpublished render and regenerate on the
+            # new tip, so changed code or a new CSV baseline is respected.
+            git reset --hard "$tip"
+            rm -f .cache/data_hash.txt
+            pip install --require-hashes -r requirements.txt
+            python3 -m unittest discover -s tests
+          done
 
       - name: Report Failure
         # A failing scheduled job otherwise only sends GitHub's default email;
         # one open issue collects every failure until someone closes it
-        if: failure()
+        if: failure() && github.event_name == 'schedule'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title="Scheduled graph update is failing"
-          number=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          label=scheduled-graph-update
+          number=$(gh issue list --state open --label "$label" --json number,title |
+            jq -r --arg title "$title" '[.[] | select(.title == $title)][0].number // empty')
           if [ -n "$number" ]; then
             gh issue comment "$number" --body "Failed again: $RUN_URL"
           else
-            gh issue create --title "$title" --body "The scheduled update failed, so the published graphs weren't updated. Run: $RUN_URL. Its annotations and job summary say why; close this issue once it's fixed."
+            if ! gh api "repos/$GH_REPO/labels/$label" > /dev/null 2>&1; then
+              gh label create "$label" --color B60205 --description "Scheduled graph publishing failures"
+            fi
+            gh issue create --title "$title" --label "$label" --body "The scheduled update failed, so the published graphs weren't updated. Run: $RUN_URL. Its annotations and job summary say why; close this issue once it's fixed."
           fi

@@ -2,6 +2,7 @@
 -r requirements.in
 # Keep shared packages at exactly the runtime lock's versions
 -c requirements.txt
+coverage==7.17.3
 mypy==2.4.1
 pandas-stubs
 pip-audit

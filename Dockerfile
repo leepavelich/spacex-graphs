@@ -17,15 +17,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --require-hashes -r requirements.txt
 
-# Run as an unprivileged user. The directories it writes are open to any user
-# ID, so `--user "$(id -u):$(id -g)"` works too, even on a cache volume that
-# another user ID wrote to: every cache file is replaced by renaming a new
-# file over it, which needs only write access to the directory. A new cache
-# volume copies these permissions when Docker creates it.
+# Run as an unprivileged user. Any UID can write to fresh output and cache
+# directories, so `--user "$(id -u):$(id -g)"` works too. The sticky bit keeps
+# other non-owner UIDs from deleting or replacing files in these directories.
+# A new cache volume inherits these permissions. Reuse it with the same UID.
 RUN useradd --create-home --uid 1000 app \
     && mkdir -p outputs .cache \
     && chown app:app outputs .cache \
-    && chmod 0777 outputs .cache
+    && chmod 1777 outputs .cache
 
 COPY graphs.py .
 COPY spacex_graphs/ ./spacex_graphs/

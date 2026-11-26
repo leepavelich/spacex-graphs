@@ -28,7 +28,7 @@ The container runs as a user with ID 1000. On a Linux host where your user ID di
 docker compose run --rm --user "$(id -u):$(id -g)" graphs
 ```
 
-If a cache volume from before this option worked fails with a permission error, remove it once with `docker compose down -v`.
+Keep using the same UID with a given cache volume. Fresh volumes let any UID create files, but the sticky bit prevents non-owners from replacing another UID's files. If you switch UIDs or hit a permission error in an older cache, remove the disposable cache with `docker compose down -v`. This does not remove the bind-mounted `outputs/` directory, which must itself be writable by the UID you run as.
 
 ## Running locally
 
@@ -37,7 +37,7 @@ You need Python 3.15 or newer.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.txt
 
 # Show the graphs on screen
 python3 graphs.py
@@ -46,7 +46,7 @@ python3 graphs.py
 python3 graphs.py --output
 ```
 
-Add `-q` to print only warnings and errors.
+`python3 -m spacex_graphs` supports the same options. Add `-q` to print only warnings and errors.
 
 ## Outputs
 
@@ -56,7 +56,7 @@ With `--output`, the script writes three files to `outputs/`:
 - `cumulative_payload_mass_to_orbit.svg`: a line chart of cumulative payload mass launched, from 2017 onwards
 - `spacex_launches.csv`: every parsed launch, with its raw and categorized orbit and its outcome. `Payload Mass (kg)` is the mass Wikipedia reports, blank when unknown or classified. `Counted Mass (kg)` is what the graphs sum, which is 0 for failed launches and for launches whose mass is unknown.
 
-Downloaded pages are cached in `.cache/`, and Wikipedia is asked only for pages that changed. If neither the launch data nor the date has changed since the last successful run, the script skips regenerating the outputs.
+Downloaded pages are cached in `.cache/`. The script asks Wikipedia for updates without re-downloading unchanged pages. It skips regeneration only if every output file still exists and the launch data, UTC date, and `code_version()` fingerprint of the source code and rendering libraries all match the last successful run.
 
 The run fails with exit code 1, rather than publishing questionable graphs, when:
 
@@ -67,11 +67,19 @@ The run fails with exit code 1, rather than publishing questionable graphs, when
 
 A GitHub Actions workflow runs the script daily and commits any changed outputs, which keeps the graphs above current.
 
+### Troubleshooting scheduled updates
+
+Open the failed run linked in the `scheduled-graph-update` issue and read its annotations and job summary. Close the issue once a scheduled run succeeds.
+
+- If the previous Falcon launch year is missing around New Year, check whether Wikipedia moved it to its own archive. Add the new page and its table layout to `WIKIPEDIA_PAGES` in `config.py`.
+- If a published launch or its mass goes missing, check Wikipedia and the parser first. If Wikipedia really removed a launch or mass or corrected a launch date, explain the correction in a PR and delete `outputs/spacex_launches.csv` in that PR. The next scheduled run will establish a fresh validation baseline.
+
 ## Project Structure
 
-`graphs.py` is the entry point; the implementation lives in the `spacex_graphs/` package:
+`graphs.py` and `python3 -m spacex_graphs` are equivalent entry points. The implementation lives in the `spacex_graphs/` package:
 
 - `config.py` — Wikipedia URLs, HTTP settings, orbit-category mapping
+- `errors.py` — shared error type for data that cannot be published
 - `cache.py` — HTTP caching (ETag/Last-Modified) and change detection
 - `parsing.py` — parses launch records from Wikipedia's HTML tables
 - `validation.py` — checks the parsed launches are complete enough to publish
@@ -85,19 +93,39 @@ A GitHub Actions workflow runs the script daily and commits any changed outputs,
 Install the development tools, which include the runtime dependencies:
 
 ```bash
-pip install -r requirements-dev.txt
+pip install --require-hashes -r requirements-dev.txt
 ```
 
-CI runs these checks on every pull request:
+CI runs these checks on every pull request and weekly to catch newly disclosed dependency vulnerabilities:
 
 ```bash
 ruff check .
 ruff format --check .
 mypy
-python3 -m unittest discover -s tests
+coverage erase
+coverage run --branch -m unittest discover -s tests -v
+coverage report --fail-under=95 --show-missing
+pip-audit --disable-pip --require-hashes -r requirements.txt
+pip-audit --disable-pip --require-hashes -r requirements-dev.txt
+scripts/update-locks.sh
+git diff --exit-code -- requirements.txt requirements-dev.txt
+docker build --tag spacex-graphs .
+docker run --rm spacex-graphs --help
+docker run --rm --user 12345:12345 --read-only --tmpfs /tmp \
+  --cap-drop ALL --security-opt no-new-privileges:true spacex-graphs --help
+docker run --rm --user 12345:12345 --read-only --tmpfs /tmp \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  --entrypoint python3 spacex-graphs -m spacex_graphs --help
 ```
 
-Dependencies are declared in `requirements.in` and `requirements-dev.in` and locked, with hashes, in the matching `.txt` files. To change a dependency, edit the `.in` file and run `scripts/update-locks.sh`; pass `--upgrade` to move everything to the latest releases. CI fails if a lock doesn't match its `.in` file.
+Dependencies are declared in `requirements.in` and `requirements-dev.in` and locked, with hashes, in the matching `.txt` files. Edit the `.in` file and run `scripts/update-locks.sh` to change a dependency. For bulk upgrades, match Dependabot's seven-day cooldown by setting a UTC cutoff:
+
+```bash
+cutoff=$(python3 -c 'from datetime import UTC, datetime, timedelta; print((datetime.now(UTC) - timedelta(days=7)).isoformat(timespec="seconds"))')
+UV_EXCLUDE_NEWER="$cutoff" scripts/update-locks.sh --upgrade
+```
+
+Set the environment variable rather than passing `--exclude-newer`, which would change the lock header. CI fails if a lock doesn't match its `.in` file.
 
 Leave regenerating `outputs/` to the scheduled workflow: SVGs rendered on other platforms differ slightly from CI's even for the same data.
 
