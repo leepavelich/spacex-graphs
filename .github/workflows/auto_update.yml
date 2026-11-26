@@ -26,19 +26,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.15"
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      - name: Install Dependencies
-        run: pip install --require-hashes -r requirements.txt
-
-      - name: Run Tests
-        run: python -m unittest discover -s tests
-
       - name: Get UTC Cache Date
         id: cache-date
         run: date -u '+date=%Y-%m-%d' >> "$GITHUB_OUTPUT"
@@ -54,18 +41,45 @@ jobs:
             wikipedia-daily-
             wikipedia-cache-
 
-      - name: Generate Graphs Without Publishing (Tag Dispatch)
-        if: github.ref_type != 'branch'
-        run: python3 graphs.py --output
-
-      - name: Generate and Publish Graphs
-        if: github.ref_type == 'branch'
+      - name: Test, Generate, and Publish Graphs
         shell: bash
         run: |
+          run_container() {
+            docker run --rm --user "$(id -u):$(id -g)" --read-only --tmpfs /tmp \
+              --cap-drop ALL --security-opt no-new-privileges:true "$@"
+          }
+
+          build_and_test() {
+            docker build --tag spacex-graphs .
+            run_container --network none --entrypoint python3 \
+              -v "$PWD/tests:/app/tests:ro" -v "$PWD/outputs:/app/outputs:ro" \
+              spacex-graphs -m unittest discover -s tests
+          }
+
+          render_graphs() {
+            local -a summary=()
+            mkdir -p outputs .cache
+            if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+              # Mount only this step's summary, not the runner's command directory.
+              touch "$GITHUB_STEP_SUMMARY"
+              summary=(-v "$GITHUB_STEP_SUMMARY:/tmp/step-summary.md"
+                -e GITHUB_STEP_SUMMARY=/tmp/step-summary.md)
+            fi
+            run_container -e GITHUB_ACTIONS "${summary[@]}" \
+              -v "$PWD/outputs:/app/outputs" -v "$PWD/.cache:/app/.cache" \
+              spacex-graphs --output
+          }
+
+          build_and_test
+          if [[ "$GITHUB_REF_TYPE" != branch ]]; then
+            render_graphs
+            exit 0 # Tag dispatches never publish.
+          fi
+
           git config user.name 'GitHub Actions'
           git config user.email 'actions@github.com'
           for attempt in {1..5}; do
-            python3 graphs.py --output
+            render_graphs
             git add -- 'outputs/*.svg' 'outputs/*.csv'
             if git diff --cached --quiet; then
               exit 0
@@ -90,8 +104,7 @@ jobs:
             # new tip, so changed code or a new CSV baseline is respected.
             git reset --hard "$tip"
             rm -f .cache/data_hash.txt
-            pip install --require-hashes -r requirements.txt
-            python3 -m unittest discover -s tests
+            build_and_test
           done
 
       - name: Report Failure

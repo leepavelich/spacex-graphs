@@ -35,8 +35,6 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Tests select Agg before importing pyplot and may use plain assertions or seeded RNGs.
 "tests/*" = ["E402", "S101", "S311"]
-# The legacy MD5 is a non-security cache filename. Drop when it is replaced.
-"spacex_graphs/cache.py" = ["S324"]
 
 [tool.coverage.run]
 source = ["."]
@@ -52,6 +50,7 @@ python_version = "3.15"
 files = ["spacex_graphs", "tests"]
 strict = true
 warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"

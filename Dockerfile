@@ -29,7 +29,7 @@ RUN useradd --create-home --uid 1000 app \
 COPY graphs.py .
 COPY spacex_graphs/ ./spacex_graphs/
 
-USER app
+USER 1000
 
 ENTRYPOINT ["python3", "graphs.py"]
 CMD ["--output"]

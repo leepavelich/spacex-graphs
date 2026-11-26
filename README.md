@@ -22,6 +22,8 @@ docker compose run --rm graphs
 
 This fetches the Wikipedia pages and saves the graphs and CSV to `outputs/`. A container has no display, so Docker always saves rather than showing the graphs on screen. To add flags, include `--output` too, as in `docker compose run --rm graphs --output -q`. Downloaded pages are kept in a Docker volume, so later runs only re-download pages that changed.
 
+The scheduled workflow uses this Dockerfile, whose base image is pinned by digest, for its tests and renders. Local Docker and CI use the same fonts and produce byte-identical SVGs for the same checkout, launch data, UTC date, and image platform. To match CI on an ARM host, run `DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose run --build --rm graphs`.
+
 The container runs as a user with ID 1000. On a Linux host where your user ID differs, run it as your own user so the files it writes in `outputs/` belong to you:
 
 ```bash
@@ -65,7 +67,7 @@ The run fails with exit code 1, rather than publishing questionable graphs, when
 - the newest launch found is more than 30 days old, which usually means new launches have stopped parsing;
 - Wikipedia can't be reached and the cached pages are more than three days old, or there are no cached pages.
 
-A GitHub Actions workflow runs the script daily and commits any changed outputs, which keeps the graphs above current.
+A GitHub Actions workflow runs the tests and renders daily in Docker, then commits any changed outputs. See [Output methodology](outputs/README.md#methodology) for how the CSV and graphs handle rideshares and incomplete mass data.
 
 ### Troubleshooting scheduled updates
 
@@ -96,7 +98,13 @@ Install the development tools, which include the runtime dependencies:
 pip install --require-hashes -r requirements-dev.txt
 ```
 
-CI runs these checks on every pull request and weekly to catch newly disclosed dependency vulnerabilities:
+From the repository root, run:
+
+```bash
+scripts/check.sh
+```
+
+The script runs the Python checks, dependency audits, and lockfile sync check below. It also runs `actionlint` if installed. CI runs these checks on every pull request and weekly, and uses digest-pinned containers for `actionlint` and `hadolint`:
 
 ```bash
 ruff check .
@@ -105,10 +113,15 @@ mypy
 coverage erase
 coverage run --branch -m unittest discover -s tests -v
 coverage report --fail-under=95 --show-missing
-pip-audit --disable-pip --require-hashes -r requirements.txt
-pip-audit --disable-pip --require-hashes -r requirements-dev.txt
+pip-audit --progress-spinner off --disable-pip --require-hashes -r requirements.txt
+pip-audit --progress-spinner off --disable-pip --require-hashes -r requirements-dev.txt
 scripts/update-locks.sh
 git diff --exit-code -- requirements.txt requirements-dev.txt
+# If installed locally, these are the same linters CI runs in Docker
+actionlint
+hadolint Dockerfile
+
+# Docker smoke checks
 docker build --tag spacex-graphs .
 docker run --rm spacex-graphs --help
 docker run --rm --user 12345:12345 --read-only --tmpfs /tmp \
@@ -127,7 +140,7 @@ UV_EXCLUDE_NEWER="$cutoff" scripts/update-locks.sh --upgrade
 
 Set the environment variable rather than passing `--exclude-newer`, which would change the lock header. CI fails if a lock doesn't match its `.in` file.
 
-Leave regenerating `outputs/` to the scheduled workflow: SVGs rendered on other platforms differ slightly from CI's even for the same data.
+Leave committing the generated SVGs and CSV to the scheduled workflow. Use Docker for preview renders, since native Python runs can pick different fonts.
 
 ## License
 
