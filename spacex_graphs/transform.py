@@ -9,7 +9,9 @@ from typing import Final, NewType
 import pandas as pd
 
 from spacex_graphs.config import (
+    BLT,
     GTO_GEO,
+    HELIOCENTRIC,
     LEO_OTHER,
     LEO_STARLINK,
     MEO,
@@ -66,8 +68,11 @@ _CASEFOLDED_ORBITS = MappingProxyType(
     {raw.casefold(): category for raw, category in ORBIT_MAPPING.items()}
 )
 
-_ORBIT_PATTERNS: tuple[tuple[re.Pattern[str], OrbitCategory], ...] = (
+# Fallbacks for orbit text not in ORBIT_MAPPING, tried in order
+_ORBIT_PATTERNS: Final[tuple[tuple[re.Pattern[str], OrbitCategory], ...]] = (
     (re.compile(r"\b(?:sub[-–— ]?orbital|transatmospheric)\b"), TRANSATMOSPHERIC),
+    (re.compile(r"\bheliocentric\b"), HELIOCENTRIC),
+    (re.compile(r"\b(?:blt|ballistic lunar transfer)\b"), BLT),
     (re.compile(r"\b(?:sso|sun[-–— ]synchronous)\b"), SSO_OTHER),
     (re.compile(r"\b(?:gto|geo|geostationary)\b"), GTO_GEO),
     (re.compile(r"\b(?:meo|medium earth orbit)\b"), MEO),
@@ -98,7 +103,9 @@ def clean_orbit_category(orbit: str) -> OrbitCategory:
 def categorize_starlink(payload: str, orbit: str) -> OrbitCategory:
     """Maps the raw orbit first, then tags Starlink payloads in LEO or SSO."""
     category = clean_orbit_category(orbit)
-    return _starlink_category(category) if "Starlink" in payload else category
+    return (
+        _starlink_category(category) if "starlink" in payload.casefold() else category
+    )
 
 
 def launch_succeeded(outcome: str) -> bool:
@@ -178,10 +185,10 @@ def calendar_day(date: datetime.date) -> int:
     return date.replace(year=LEAP_REFERENCE_YEAR).timetuple().tm_yday
 
 
-def _calendar_days(dates: pd.Series) -> pd.Series:
+def _calendar_days(dates: pd.Series[pd.Timestamp]) -> pd.Series[int]:
     """calendar_day for a datetime Series: common years skip February 29."""
     after_february = (dates.dt.month > 2) & ~dates.dt.is_leap_year
-    days: pd.Series = dates.dt.day_of_year + after_february.astype(int)
+    days: pd.Series[int] = dates.dt.day_of_year + after_february.astype(int)
     return days
 
 
@@ -234,7 +241,7 @@ def _kg(mass: float) -> str:
     return f"{mass:,.0f} kg"
 
 
-def _by_year(series: pd.Series) -> dict[int, float]:
+def _by_year(series: pd.Series[float]) -> dict[int, float]:
     """A Series indexed by year as a plain dict, oldest year first."""
     return dict(
         sorted(zip(map(int, series.index.tolist()), map(float, series), strict=True))

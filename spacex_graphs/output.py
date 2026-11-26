@@ -8,10 +8,12 @@ import json
 import logging
 import os
 from collections.abc import Iterable, Mapping
+from types import MappingProxyType
+from typing import Final
 from xml.sax.saxutils import escape
 
-import matplotlib
 import pandas as pd
+from matplotlib import style
 from matplotlib.figure import Figure
 
 from spacex_graphs import plotting
@@ -25,26 +27,33 @@ logger = logging.getLogger(__name__)
 
 # matplotlib otherwise embeds a <dc:date> timestamp and random clip-path/glyph
 # IDs, so identical data produced a different SVG (and a noisy commit) every run
-_SVG_HASH_SALT = "spacex-graphs"
+_SVG_HASH_SALT: Final = "spacex-graphs"
+# Saving reads rcParams too (savefig.*, path.*, svg.*), so it runs under the
+# same pinned style as plotting, plus these, never the caller's settings
+_SVG_STYLE: Final[Mapping[str, object]] = MappingProxyType(
+    {"svg.hashsalt": _SVG_HASH_SALT, "svg.fonttype": "path"}
+)
 
 
 def _dark_mode_rules() -> list[str]:
     """CSS rules that recolor a chart for a dark color scheme.
 
     matplotlib writes each element's colors as inline styles, so the rules
-    find elements by matplotlib's deterministic group IDs or by the exact
-    light-theme colors plotting pins, and need !important to beat the inline
-    styles. Data colors stay as they are, except the few too dark to see on
+    find elements by the IDs plotting gives the backgrounds, by matplotlib's
+    "text_" group IDs, or by the exact light-theme colors plotting pins, and
+    need !important to beat the inline styles. Data colors stay as they are, except the few too dark to see on
     the dark background, which get lighter shades.
     """
     background = plotting.DARK_BACKGROUND_COLOR
     rules = [
         # The figure's and the axes' backgrounds
-        f"#figure_1 > #patch_1 > path, #axes_1 > #patch_2 > path "
+        f"#{plotting.FIGURE_BACKGROUND_ID} > path, "
+        f"#{plotting.AXES_BACKGROUND_ID} > path "
         f"{{ fill: {background} !important }}",
-        # The legend's frame is the first element in its group
-        f"#legend_1 > g:first-child > path {{ fill: {plotting.DARK_LEGEND_COLOR} "
-        f"!important; stroke: {plotting.DARK_GRID_COLOR} !important }}",
+        # The legend's frame
+        f"#{plotting.LEGEND_BACKGROUND_ID} > path "
+        f"{{ fill: {plotting.DARK_LEGEND_COLOR} !important; "
+        f"stroke: {plotting.DARK_GRID_COLOR} !important }}",
         # Text in the default color has no fill of its own, so it inherits this
         f'g[id^="text_"] {{ fill: {plotting.DARK_TEXT_COLOR} }}',
         f'[style*="fill: {plotting.SECONDARY_TEXT_COLOR}"] '
@@ -96,9 +105,7 @@ def _accessible_svg(svg: bytes, title: str, description: str) -> bytes:
 
 def _save_svg(fig: Figure, path: str, description: str) -> None:
     buffer = io.BytesIO()
-    with matplotlib.rc_context(
-        {"svg.hashsalt": _SVG_HASH_SALT, "svg.fonttype": "path"}
-    ):
+    with style.context(["default", dict(plotting.CHART_STYLE), dict(_SVG_STYLE)]):
         fig.savefig(buffer, format="svg", metadata={"Date": None})
     captions = [text.get_text() for text in fig.texts]
     svg = _accessible_svg(
@@ -161,7 +168,10 @@ def save_plots(
 def published_launches(output_dir: str) -> list[PublishedLaunch]:
     """Reads the launches in the published CSV, or [] if there isn't one.
 
-    The committed CSV is the baseline the next run is checked against.
+    The committed CSV is the baseline the next run is checked against. A CSV
+    that exists but can't serve as one (malformed, holding no launches, or
+    with a negative mass) raises PublishedCsvError rather than silently
+    switching the regression checks off.
     """
     csv_path = os.path.join(output_dir, LAUNCHES_CSV)
     try:
@@ -177,15 +187,16 @@ def published_launches(output_dir: str) -> list[PublishedLaunch]:
                 for row in reader:
                     if None in row or any(value is None for value in row.values()):
                         raise ValueError("incorrect number of fields")
-                    mass = row[_CSV_REPORTED_MASS]
                     launches.append(
                         PublishedLaunch(
                             date=datetime.date.fromisoformat(row[_CSV_DATE]),
                             vehicle=_unescape_formula(row[_CSV_VEHICLE]),
                             payload=_unescape_formula(row[_CSV_PAYLOAD]),
-                            mass=int(mass) if mass else None,
+                            mass=_published_mass(row[_CSV_REPORTED_MASS]),
                         )
                     )
+                if not launches:
+                    raise ValueError("no launches")
             except (csv.Error, KeyError, ValueError) as error:
                 raise PublishedCsvError(
                     f"malformed published CSV {csv_path} near line {reader.line_num}: {error}"
@@ -193,6 +204,16 @@ def published_launches(output_dir: str) -> list[PublishedLaunch]:
     except FileNotFoundError:
         return []
     return launches
+
+
+def _published_mass(text: str) -> int | None:
+    """A published mass in kg, or None if blank (unknown)."""
+    if not text:
+        return None
+    mass = int(text)
+    if mass < 0:
+        raise ValueError(f"negative mass {mass}")
+    return mass
 
 
 # Spreadsheets treat a cell starting with one of these as a formula

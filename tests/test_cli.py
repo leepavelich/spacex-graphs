@@ -76,6 +76,41 @@ class TestCodeVersion(unittest.TestCase):
                 )
                 self.assertNotEqual(cli.code_version(), before)
 
+    def test_tracks_the_python_version(self):
+        baseline = cli.code_version()
+        with mock.patch("sys.version_info", (3, 99, 0, "final", 0)):
+            self.assertNotEqual(cli.code_version(), baseline)
+
+    def test_fields_are_delimited_so_moved_bytes_change_the_fingerprint(self):
+        # Without delimiters, "ab" + "c" and "a" + "bc" would hash the same
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "cli.py").write_bytes(b"")
+            fingerprints = set()
+            for name, content in (("a.py", b"x.py"), ("a.pyx.py", b"")):
+                for stale in root.glob("a*"):
+                    stale.unlink()
+                (root / name).write_bytes(content)
+                with (
+                    mock.patch.object(cli, "__file__", str(root / "cli.py")),
+                    mock.patch("spacex_graphs.cli.metadata.version", return_value="1"),
+                ):
+                    fingerprints.add(cli.code_version())
+            self.assertEqual(len(fingerprints), 2)
+
+    def test_help_explains_when_regeneration_is_skipped(self):
+        with (
+            mock.patch("sys.argv", ["graphs.py", "--help"]),
+            mock.patch("sys.stdout") as stdout,
+            self.assertRaises(SystemExit),
+        ):
+            cli.main()
+        text = " ".join(
+            "".join(call.args[0] for call in stdout.write.call_args_list).split()
+        )
+        self.assertIn("code fingerprint", text)
+        self.assertIn("every output file still exists", text)
+
 
 class TestFetchAndParse(unittest.TestCase):
     def test_fetches_the_page_url_and_parses_with_its_layout(self):
@@ -290,6 +325,24 @@ class TestMain(unittest.TestCase):
                 contents = summary.read_text(encoding="utf-8")
                 self.assertIn(f"{message}\n~~~~\n", contents)
                 self.assertTrue(contents.startswith("**Failed**\n\n~~~~\n"))
+
+    def test_an_unwritable_step_summary_still_exits_with_the_error(self):
+        # A directory can't be opened for appending
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": tmp}),
+            mock.patch.object(
+                cli, "run", side_effect=validation.EmptyPageError("no rows")
+            ),
+            mock.patch.object(cli, "_configure_logging"),
+            mock.patch("sys.argv", ["graphs.py", "--output"]),
+            self.assertLogs(cli.logger, "WARNING") as logs,
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            cli.main()
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("ERROR: no rows", logs.output[0])
+        self.assertIn("Could not write job summary", logs.output[1])
 
     def test_display_without_a_display_is_a_usage_error(self):
         # Tests run with the file-only Agg backend, like a container or CI

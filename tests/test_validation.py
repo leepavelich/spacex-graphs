@@ -5,8 +5,9 @@ import datetime
 import unittest
 from pathlib import Path
 
+from spacex_graphs import errors, validation
 from spacex_graphs.errors import ImplausibleMassError, OutcomeIntegrityError
-from spacex_graphs.output import published_launches
+from spacex_graphs.output import _unescape_formula, published_launches
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.validation import (
     EmptyPageError,
@@ -169,15 +170,17 @@ class TestOutcomeAndMassIntegrity(unittest.TestCase):
             return
         with path.open(encoding="utf-8", newline="") as f:
             rows = list(csv.DictReader(f))
+        # Text columns are formula-escaped in the CSV; read them back the way
+        # published_launches does, so payload names match the baseline's
         records = [
             LaunchRecord(
                 int(row["Year"]),
-                row["Orbit"],
-                row["Payload"],
+                _unescape_formula(row["Orbit"]),
+                _unescape_formula(row["Payload"]),
                 int(row["Payload Mass (kg)"]) if row["Payload Mass (kg)"] else None,
                 datetime.datetime.fromisoformat(f"{row['Date']}T{row['Time (UTC)']}"),
-                row["Vehicle"],
-                row["Outcome"],
+                _unescape_formula(row["Vehicle"]),
+                _unescape_formula(row["Outcome"]),
             )
             for row in rows
         ]
@@ -264,9 +267,55 @@ class TestCheckPublishedLaunches(unittest.TestCase):
         changed = [first, second._replace(payload_mass=None)]
         with self.assertRaisesRegex(PublishedLaunchesLostError, "1 .* lost their mass"):
             check_published_launches(changed, published)
-        check_published_launches(
-            changed, [_published(first, mass=None), _published(second)]
+
+    def test_a_mass_moving_to_another_payload_does_not_mask_its_loss(self):
+        # Matched by count alone, (A: 15,000, B: unknown) -> (A: unknown,
+        # B: 14,000) still has one known mass; matched by name, A lost its own
+        sat_a = _launch(2026, 5, 5, payload="Sat A")
+        sat_b = sat_a._replace(
+            launch_datetime=sat_a.launch_datetime.replace(hour=14), payload="Sat B"
         )
+        published = [_published(sat_a, 15_000), _published(sat_b, None)]
+        changed = [
+            sat_a._replace(payload_mass=None),
+            sat_b._replace(payload_mass=14_000),
+        ]
+        with self.assertRaisesRegex(
+            PublishedLaunchesLostError,
+            r"1 published launches lost their mass: "
+            r"2026-05-05 Falcon 9 \(Sat A\)",
+        ):
+            check_published_launches(changed, published)
+        # B gaining a mass while A keeps its own is fine
+        check_published_launches(
+            [sat_a._replace(payload_mass=15_000), sat_b._replace(payload_mass=14_000)],
+            published,
+        )
+
+    def test_renamed_payloads_fall_back_to_counting_known_masses(self):
+        sat_a = _launch(2026, 5, 5, payload="Sat A")
+        sat_b = sat_a._replace(
+            launch_datetime=sat_a.launch_datetime.replace(hour=14), payload="Sat B"
+        )
+        published = [_published(sat_a, 15_000), _published(sat_b, None)]
+        renamed = [
+            sat_a._replace(payload="Sat A (renamed)", payload_mass=None),
+            sat_b._replace(payload="Sat B (renamed)", payload_mass=15_000),
+        ]
+        # Without names to go by, one known mass is still one known mass
+        check_published_launches(renamed, published)
+        with self.assertRaisesRegex(PublishedLaunchesLostError, "1 .* lost their mass"):
+            check_published_launches(
+                [launch._replace(payload_mass=None) for launch in renamed], published
+            )
+
+    def test_a_missing_launch_is_not_also_reported_as_a_lost_mass(self):
+        day = _launch(2026, 5, 5)
+        published = [_published(day, 500), _published(day._replace(payload="B"), 600)]
+        with self.assertRaises(PublishedLaunchesLostError) as ctx:
+            check_published_launches([day._replace(payload_mass=500)], published)
+        self.assertIn("1 published launches are missing", str(ctx.exception))
+        self.assertNotIn("lost their mass", str(ctx.exception))
 
     def test_a_mass_that_was_already_unknown_may_stay_unknown(self):
         published = [_published(self.records[0], mass=None), *self.published[1:]]
@@ -454,14 +503,53 @@ class TestMultiPayloadOutcomes(unittest.TestCase):
     def test_primary_outcome_decides_semicolon_joined_outcomes(self):
         from spacex_graphs.validation import OutcomeKind, outcome_kind
 
-        self.assertEqual(
-            outcome_kind("Success; Partial failure"),
-            OutcomeKind.SUCCESS,
-        )
-        self.assertEqual(
-            outcome_kind("Success (partial failure)"),
-            OutcomeKind.FAILURE,
-        )
+        for outcome, kind in (
+            ("Success; Partial failure", OutcomeKind.SUCCESS),
+            ("Success; Failure; Success", OutcomeKind.SUCCESS),
+            ("Failure; Success", OutcomeKind.FAILURE),
+            ("Success (partial failure)", OutcomeKind.FAILURE),
+        ):
+            with self.subTest(outcome=outcome):
+                self.assertEqual(outcome_kind(outcome), kind)
+
+    def test_text_after_a_semicolon_must_be_an_outcome_to_be_a_join(self):
+        from spacex_graphs.validation import OutcomeKind, outcome_kind
+
+        for outcome, kind in (
+            # A qualifier, not another payload's outcome
+            ("Success; payload lost", OutcomeKind.FAILURE),
+            ("Success; partially failed deployment", OutcomeKind.FAILURE),
+            # Not silently read as a success
+            ("Success; <corrupted>", OutcomeKind.UNRECOGNIZED),
+            ("Success;", OutcomeKind.UNRECOGNIZED),
+            ("Banana; Success", OutcomeKind.UNRECOGNIZED),
+        ):
+            with self.subTest(outcome=outcome):
+                self.assertEqual(outcome_kind(outcome), kind)
+
+    def test_launch_failure_and_lost_payloads_are_failures(self):
+        from spacex_graphs.validation import OutcomeKind, outcome_kind
+
+        for outcome in ("Launch failure", "Success (payload lost)"):
+            with self.subTest(outcome=outcome):
+                self.assertIs(outcome_kind(outcome), OutcomeKind.FAILURE)
+
+
+class TestErrorsModule(unittest.TestCase):
+    def test_validation_errors_live_in_errors_and_are_re_exported(self):
+        for name in (
+            "EmptyPageError",
+            "MissingYearsError",
+            "NoRecentLaunchesError",
+            "PublishedLaunchesLostError",
+            "ImplausibleMassError",
+            "OutcomeIntegrityError",
+        ):
+            with self.subTest(name=name):
+                error = getattr(errors, name)
+                self.assertIs(getattr(validation, name), error)
+                self.assertEqual(error.__module__, "spacex_graphs.errors")
+                self.assertTrue(issubclass(error, errors.DataError))
 
 
 if __name__ == "__main__":

@@ -75,6 +75,10 @@ class TestCleanOrbitCategory(unittest.TestCase):
             ("inclined meo", "MEO"),
             ("Sub–orbital trajectory", "Transatmospheric"),
             ("transatmospheric test", "Transatmospheric"),
+            ("Heliocentric (Mars flyby)[7]", "Heliocentric"),
+            ("heliocentric 1 AU", "Heliocentric"),
+            ("BLT to lunar orbit", "BLT"),
+            ("Ballistic Lunar Transfer via L1", "BLT"),
         ):
             with self.subTest(raw=raw):
                 self.assertEqual(clean_orbit_category(raw), expected)
@@ -91,6 +95,11 @@ class TestCategorizeStarlink(unittest.TestCase):
         self.assertEqual(
             categorize_starlink("20 Starlink V3", "LEO (Starlink)"), "LEO (Starlink)"
         )
+
+    def test_starlink_is_recognized_in_any_case(self):
+        for payload in ("STARLINK Group 6-1", "starlink v2 mini", "Starlink"):
+            with self.subTest(payload=payload):
+                self.assertEqual(categorize_starlink(payload, "LEO"), "LEO (Starlink)")
 
     def test_starship_starlink_flights(self):
         for orbit, expected in (
@@ -345,6 +354,22 @@ class TestSummaries(unittest.TestCase):
             "Year-end totals: 2025 2,500,000 kg, 2024 1,000 kg. "
             "2026 reached 3,000,000 kg by 3 October.",
         )
+
+    def test_summaries_without_a_current_year(self):
+        # Early January, before the current year's first launch
+        df = self._df()
+        today = datetime.date(2027, 1, 3)
+        summary = by_year_summary(payload_mass_by_year_orbit(df), today.year)
+        self.assertTrue(
+            summary.endswith("The heaviest full year is 2026, with 3,000,000 kg.")
+        )
+        cumulative = cumulative_summary(build_cumulative_frame(df, today), today)
+        self.assertTrue(
+            cumulative.endswith(
+                "Year-end totals: 2026 3,000,000 kg, 2025 2,500,000 kg, 2024 1,000 kg."
+            )
+        )
+        self.assertNotIn("2027", cumulative)
 
     def test_summaries_without_launches(self):
         empty = build_dataframe([])

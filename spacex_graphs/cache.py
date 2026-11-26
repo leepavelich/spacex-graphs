@@ -8,7 +8,8 @@ import os
 import tempfile
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
-from typing import IO, overload
+from dataclasses import dataclass
+from typing import IO, Final, overload
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -63,15 +64,26 @@ def _read_meta(cache_meta_path: str) -> dict[str, str]:
     return meta
 
 
+# Outputs are published and cached pages are public, so both are readable by
+# everyone, like a file written with open() under the usual 022 umask, rather
+# than owner-only like NamedTemporaryFile's default. That keeps them readable
+# from a bind mount or by another user, such as a CI step after the container.
+DEFAULT_FILE_MODE: Final = 0o644
+
+
 @contextmanager
-def atomic_writer(path: str) -> Iterator[IO[bytes]]:
-    """Writes beside the destination, replacing it only after a successful write."""
+def atomic_writer(path: str, mode: int = DEFAULT_FILE_MODE) -> Iterator[IO[bytes]]:
+    """Writes beside the destination, replacing it only after a successful write.
+
+    The file gets the permission bits in mode, whatever the process umask.
+    """
     temporary: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="wb", dir=os.path.dirname(path) or ".", suffix=".tmp", delete=False
         ) as f:
             temporary = f.name
+            os.chmod(temporary, mode)
             yield f
         os.replace(temporary, path)
         temporary = None
@@ -149,6 +161,155 @@ def _cached_result[T](path: str, parse: Callable[[bytes], T]) -> T | None:
     return result if result else None
 
 
+@dataclass
+class _CacheEntry:
+    """A page's cache files and what is known about them during one fetch."""
+
+    url: str
+    name: str
+    meta_path: str
+    content_path: str
+    has_content: bool
+    meta: dict[str, str]
+    # Set once a 304 confirmed the cached body but it couldn't be used
+    unusable: bool = False
+
+    def validators(self) -> dict[str, str]:
+        """Conditional request headers, sent only when the cached body exists."""
+        return {
+            header: self.meta[key]
+            for key, header in (
+                ("etag", "If-None-Match"),
+                ("last-modified", "If-Modified-Since"),
+            )
+            if key in self.meta
+        }
+
+
+def _open_entry(url: str, cache_dir: str, name: str | None) -> _CacheEntry:
+    meta_path, content_path = _cache_paths(url, cache_dir)
+    has_content = os.path.exists(content_path)
+    return _CacheEntry(
+        url=url,
+        name=name or url,
+        meta_path=meta_path,
+        content_path=content_path,
+        has_content=has_content,
+        meta=_read_meta(meta_path) if has_content else {},
+    )
+
+
+def _cache_age(entry: _CacheEntry) -> datetime.timedelta:
+    """How long ago the cached copy was last confirmed current.
+
+    A confirmation time in the future, from a clock that was ahead, counts as
+    just now rather than as a negative age.
+    """
+    age = _now() - _verified_at(entry.meta, entry.content_path)
+    return max(age, datetime.timedelta(0))
+
+
+def _fall_back[T](
+    entry: _CacheEntry, parse: Callable[[bytes], T], reason: str
+) -> tuple[T, bool]:
+    """Returns the cached copy after a failed fetch, if it is usable and recent."""
+    if not entry.has_content:
+        raise FetchError(
+            f"{entry.name} could not be fetched ({reason}) and there is no "
+            "cached copy to fall back to"
+        )
+    result = None if entry.unusable else _cached_result(entry.content_path, parse)
+    if result is None:
+        raise FetchError(
+            f"{entry.name} could not be fetched ({reason}) and the cached copy "
+            "is unusable"
+        )
+    age = _cache_age(entry)
+    if age > STALE_CACHE_LIMIT:
+        raise StaleCacheError(
+            f"{entry.name} could not be fetched ({reason}) and the cached copy "
+            f"was last confirmed current {_format_age(age)} ago"
+        )
+    logger.warning(
+        "  ! %s (using cached - %s; last confirmed %s ago)",
+        entry.name,
+        reason,
+        _format_age(age),
+    )
+    return result, False
+
+
+def _confirm_cached[T](entry: _CacheEntry, parse: Callable[[bytes], T]) -> T | None:
+    """After a 304, returns the cached copy and records that it is current.
+
+    Returns None, and marks the entry unusable, if the cached body can't be
+    used after all.
+    """
+    result = _cached_result(entry.content_path, parse)
+    if result is None:
+        entry.unusable = True
+        return None
+    _write_meta(entry.meta_path, {**entry.meta, "verified_at": _now().isoformat()})
+    logger.info("  ✓ %s (cached)", entry.name)
+    return result
+
+
+def _store(entry: _CacheEntry, response: requests.Response, content: bytes) -> None:
+    """Caches a usable download with its validators."""
+    meta = {"url": entry.url, "verified_at": _now().isoformat()}
+    if "ETag" in response.headers:
+        meta["etag"] = response.headers["ETag"]
+    if "Last-Modified" in response.headers:
+        meta["last-modified"] = response.headers["Last-Modified"]
+    _write_atomically(entry.content_path, content)
+    _write_meta(entry.meta_path, meta)
+    logger.info("  ↓ %s (downloaded)", entry.name)
+
+
+def _use_response[T](
+    entry: _CacheEntry, parse: Callable[[bytes], T], response: requests.Response
+) -> tuple[T, bool]:
+    """Parses and caches a usable 200 response, or falls back to the cache."""
+    if response.status_code != 200:
+        return _fall_back(entry, parse, f"HTTP {response.status_code}")
+    content = _response_content(response)
+    if content is None:
+        return _fall_back(
+            entry, parse, f"HTTP 200 body exceeds {MAX_RESPONSE_BYTES} bytes"
+        )
+    result = parse(content)
+    if not result:
+        return _fall_back(entry, parse, "HTTP 200, but nothing usable in the page")
+    _store(entry, response, content)
+    return result, False
+
+
+def _get(
+    session: requests.Session, url: str, headers: Mapping[str, str]
+) -> requests.Response:
+    return session.get(url, headers=dict(headers), timeout=REQUEST_TIMEOUT, stream=True)
+
+
+def _request[T](
+    session: requests.Session, entry: _CacheEntry, parse: Callable[[bytes], T]
+) -> tuple[T, bool]:
+    """Fetches the page, conditionally when there is a cached copy.
+
+    If a 304 confirms a cached body that can't be used, asks once more
+    without validators.
+    """
+    validators = entry.validators()
+    if validators:
+        with _get(session, entry.url, {**HEADERS, **validators}) as response:
+            if response.status_code != 304:
+                return _use_response(entry, parse, response)
+            result = _confirm_cached(entry, parse)
+            if result is not None:
+                return result, True
+    with _get(session, entry.url, HEADERS) as response:
+        return _use_response(entry, parse, response)
+
+
 @overload
 def fetch_with_cache(
     url: str, *, cache_dir: str, name: str | None = None
@@ -177,87 +338,13 @@ def fetch_with_cache[T](
     parse_content: Callable[[bytes], T | bytes] = (
         parse if parse is not None else lambda content: content
     )
-    cache_meta_path, cache_content_path = _cache_paths(url, cache_dir)
-    page_name = name or url
-
-    # Only send validators if their body exists.
-    has_cached_content = os.path.exists(cache_content_path)
-    cached_meta = _read_meta(cache_meta_path) if has_cached_content else {}
-    cache_unusable = False
-
-    def fall_back(reason: str) -> tuple[T | bytes, bool]:
-        if not has_cached_content:
-            raise FetchError(
-                f"{page_name} could not be fetched ({reason}) and there is no "
-                "cached copy to fall back to"
-            )
-        if not cache_unusable:
-            result = _cached_result(cache_content_path, parse_content)
-            if result is not None:
-                age = _now() - _verified_at(cached_meta, cache_content_path)
-                if age > STALE_CACHE_LIMIT:
-                    raise StaleCacheError(
-                        f"{page_name} could not be fetched ({reason}) and the cached "
-                        f"copy was last confirmed current {age.days} days ago"
-                    )
-                logger.warning(
-                    "  ! %s (using cached - %s; last confirmed %s ago)",
-                    page_name,
-                    reason,
-                    _format_age(age),
-                )
-                return result, False
-        raise FetchError(
-            f"{page_name} could not be fetched ({reason}) and the cached copy is unusable"
-        )
-
-    headers = HEADERS.copy()
-    for key, header in (
-        ("etag", "If-None-Match"),
-        ("last-modified", "If-Modified-Since"),
-    ):
-        if key in cached_meta:
-            headers[header] = cached_meta[key]
-
+    entry = _open_entry(url, cache_dir, name)
     try:
         with _session() as session:
-            while True:
-                with session.get(
-                    url, headers=headers, timeout=REQUEST_TIMEOUT, stream=True
-                ) as response:
-                    if response.status_code == 304 and headers != HEADERS:
-                        result = _cached_result(cache_content_path, parse_content)
-                        if result is not None:
-                            _write_meta(
-                                cache_meta_path,
-                                {**cached_meta, "verified_at": _now().isoformat()},
-                            )
-                            logger.info("  ✓ %s (cached)", page_name)
-                            return result, True
-                        cache_unusable = True
-                        headers = HEADERS.copy()
-                        continue
-
-                    if response.status_code != 200:
-                        return fall_back(f"HTTP {response.status_code}")
-
-                    content = _response_content(response)
-                    if content is None:
-                        return fall_back(
-                            f"HTTP 200 body exceeds {MAX_RESPONSE_BYTES} bytes"
-                        )
-                    result = parse_content(content)
-                    if not result:
-                        return fall_back("HTTP 200, but nothing usable in the page")
-
-                    meta = {"url": url, "verified_at": _now().isoformat()}
-                    if "ETag" in response.headers:
-                        meta["etag"] = response.headers["ETag"]
-                    if "Last-Modified" in response.headers:
-                        meta["last-modified"] = response.headers["Last-Modified"]
-                    _write_atomically(cache_content_path, content)
-                    _write_meta(cache_meta_path, meta)
-                    logger.info("  ↓ %s (downloaded)", page_name)
-                    return result, False
+            return _request(session, entry, parse_content)
     except requests.RequestException as error:
-        return fall_back(f"{type(error).__name__}; check the network connection")
+        return _fall_back(
+            entry,
+            parse_content,
+            f"{type(error).__name__}; check the network connection",
+        )
