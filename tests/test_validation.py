@@ -290,5 +290,19 @@ class TestPolicyValues(unittest.TestCase):
         self.assertEqual(config.HIGHLIGHT_FROM_YEAR, 2020)
 
 
+class TestMultiPayloadOutcomes(unittest.TestCase):
+    def test_primary_outcome_decides_semicolon_joined_outcomes(self):
+        from spacex_graphs.validation import OutcomeKind, outcome_kind
+
+        self.assertEqual(
+            outcome_kind("Success; Partial failure"),
+            OutcomeKind.SUCCESS,
+        )
+        self.assertEqual(
+            outcome_kind("Success (partial failure)"),
+            OutcomeKind.FAILURE,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

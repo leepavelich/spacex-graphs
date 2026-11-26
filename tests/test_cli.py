@@ -14,7 +14,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import requests
 
-from spacex_graphs import cache, cli, output, plotting, validation
+from spacex_graphs import cache, cli, output, parsing, plotting, validation
 from spacex_graphs.config import WIKIPEDIA_PAGES
 from spacex_graphs.errors import ImplausibleMassError, OutcomeIntegrityError
 from spacex_graphs.parsing import LaunchRecord
@@ -206,10 +206,10 @@ class TestMain(unittest.TestCase):
             mock.patch.object(cli, "run") as run,
             mock.patch.object(cli, "_configure_logging") as configure,
             mock.patch("sys.argv", ["graphs.py", "--output", "-q"]),
-            mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": "/tmp/summary.md"}),
+            mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": "step-summary.md"}),
         ):
             cli.main()
-        run.assert_called_once_with(True, summary_path="/tmp/summary.md")
+        run.assert_called_once_with(True, summary_path="step-summary.md")
         configure.assert_called_once_with(True)
 
     def test_display_is_allowed_with_an_interactive_backend(self):
@@ -451,9 +451,15 @@ class TestFixtureRoundTrip(unittest.TestCase):
                 os.path.join(tmp, name) for name in ("cache", "out")
             )
             today = datetime.date(2025, 1, 13)
+            expected_count = sum(
+                1
+                for page in (falcon, starship)
+                for record in parsing.parse_launch_page(page.layout, html[page.url])
+                if record.launch_datetime.date() <= today
+            )
             cli.run(True, today, cache_dir=cache_dir, output_dir=output_dir)
             baseline = output.published_launches(output_dir)
-            self.assertEqual(len(baseline), 10)
+            self.assertEqual(len(baseline), expected_count)
             self.assertIn(
                 PublishedLaunch(
                     datetime.date(2024, 11, 19),

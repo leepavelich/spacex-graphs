@@ -55,7 +55,7 @@ _FAILED_QUALIFIER = re.compile(r"\b(?:failed|failure|partial|unsuccessful)\b")
 
 def outcome_kind(outcome: str) -> OutcomeKind:
     """Classifies an outcome for integrity checks and the transform."""
-    outcome = " ".join(outcome.casefold().split())
+    outcome = " ".join(outcome.split(";", 1)[0].casefold().split())
     if _UNLAUNCHED.match(outcome):
         return OutcomeKind.UNLAUNCHED
     # The Crew Dragon abort test successfully delivered its test payload.
