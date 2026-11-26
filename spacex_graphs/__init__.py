@@ -1,1 +1,1 @@
-"""Generates graphs of SpaceX mass-to-orbit launches from Wikipedia data."""
+"""Graphs SpaceX payload mass launched, using Wikipedia launch lists."""

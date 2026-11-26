@@ -1,17 +1,20 @@
-"""Checks that the parsed launches are complete enough to publish.
-
-Each check raises one of the errors below when the data can't be trusted,
-which fails the run instead of publishing graphs with launches missing. These
-are pure functions; the CLI fetches the inputs and decides what to log.
-"""
+"""Pure checks and filters for launch completeness and integrity before publication."""
 
 import datetime
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
+from enum import Enum, auto
 from typing import NamedTuple
 
-from spacex_graphs.config import FIRST_CONTINUOUS_YEAR, MAX_DAYS_SINCE_LAUNCH
-from spacex_graphs.errors import DataError
+from spacex_graphs.config import (
+    DEFAULT_MAX_PAYLOAD_MASS_KG,
+    FIRST_CONTINUOUS_YEAR,
+    MAX_DAYS_SINCE_LAUNCH,
+    MAX_PAYLOAD_MASS_KG,
+    MAX_UNRECOGNIZED_OUTCOME_FRACTION,
+)
+from spacex_graphs.errors import DataError, ImplausibleMassError, OutcomeIntegrityError
 from spacex_graphs.parsing import LaunchRecord
 
 
@@ -28,7 +31,45 @@ class PublishedLaunchesLostError(DataError):
 
 
 class NoRecentLaunchesError(DataError):
-    """Raised when the newest parsed launch is too old to be the latest."""
+    """Raised when no launches were found or the newest one is too old."""
+
+
+class OutcomeKind(Enum):
+    """The meaning of an outcome cell, without changing the reported text."""
+
+    SUCCESS = auto()
+    FAILURE = auto()
+    UNLAUNCHED = auto()
+    UNRECOGNIZED = auto()
+
+
+_UNLAUNCHED = re.compile(
+    r"^(?:launch )?(?:scheduled|planned|tbd|scrubbed|upcoming|delayed)\b"
+)
+_SUCCESS = re.compile(r"^success(?:ful)?\b")
+_FAILURE = re.compile(
+    r"^(?:failure|failed|partial success|partial failure|precluded|unsuccessful)\b"
+)
+_FAILED_QUALIFIER = re.compile(r"\b(?:failed|failure|partial|unsuccessful)\b")
+
+
+def outcome_kind(outcome: str) -> OutcomeKind:
+    """Classifies an outcome for integrity checks and the transform."""
+    outcome = " ".join(outcome.split(";", 1)[0].casefold().split())
+    if _UNLAUNCHED.match(outcome):
+        return OutcomeKind.UNLAUNCHED
+    # The Crew Dragon abort test successfully delivered its test payload.
+    if outcome == "successful simulated failure":
+        return OutcomeKind.SUCCESS
+    if _SUCCESS.match(outcome):
+        return (
+            OutcomeKind.FAILURE
+            if _FAILED_QUALIFIER.search(outcome)
+            else OutcomeKind.SUCCESS
+        )
+    if _FAILURE.match(outcome):
+        return OutcomeKind.FAILURE
+    return OutcomeKind.UNRECOGNIZED
 
 
 class PublishedLaunch(NamedTuple):
@@ -58,21 +99,23 @@ def check_pages_not_empty(page_records: Mapping[str, Sequence[LaunchRecord]]) ->
 def drop_duplicate_launches(
     records: Sequence[LaunchRecord],
 ) -> tuple[list[LaunchRecord], int]:
-    """Removes launches listed more than once, keeping the first listing.
+    """Removes launches listed more than once, preferring a reported mass.
 
     When Wikipedia splits a year out of the current list, both pages can list
     the same launches for a while. A vehicle can't launch twice at the same
-    minute, so launch time and vehicle identify a launch. Returns the unique
-    records and how many duplicates were dropped.
+    minute, so launch time and vehicle identify a launch. Among equally
+    complete listings, keeps the first. Returns the unique records and the
+    number of duplicates.
     """
-    seen: set[tuple[datetime.datetime, str]] = set()
-    unique = []
+    unique: dict[tuple[datetime.datetime, str], LaunchRecord] = {}
     for record in records:
         key = (record.launch_datetime, record.vehicle)
-        if key not in seen:
-            seen.add(key)
-            unique.append(record)
-    return unique, len(records) - len(unique)
+        previous = unique.get(key)
+        if previous is None or (
+            previous.payload_mass is None and record.payload_mass is not None
+        ):
+            unique[key] = record
+    return list(unique.values()), len(records) - len(unique)
 
 
 def drop_future_launches(
@@ -81,6 +124,44 @@ def drop_future_launches(
     """Removes launches dated after today, returning the rest and the count."""
     kept = [r for r in records if r.launch_datetime.date() <= today]
     return kept, len(records) - len(kept)
+
+
+def drop_unlaunched(records: Sequence[LaunchRecord]) -> tuple[list[LaunchRecord], int]:
+    """Removes scheduled or scrubbed launches even if they are dated today."""
+    kept = [r for r in records if outcome_kind(r.outcome) is not OutcomeKind.UNLAUNCHED]
+    return kept, len(records) - len(kept)
+
+
+def check_outcomes(records: Iterable[LaunchRecord]) -> None:
+    """Fails if no successes were parsed or too many outcomes are unfamiliar."""
+    counts = Counter(outcome_kind(record.outcome) for record in records)
+    if not counts[OutcomeKind.SUCCESS]:
+        raise OutcomeIntegrityError(
+            "no successful launches found (has the Wikipedia outcome column changed?)"
+        )
+    unknown = counts[OutcomeKind.UNRECOGNIZED]
+    total = counts.total()
+    if unknown / total > MAX_UNRECOGNIZED_OUTCOME_FRACTION:
+        raise OutcomeIntegrityError(
+            f"{unknown} of {total} launch outcomes are unrecognized "
+            "(has the Wikipedia outcome column changed?)"
+        )
+
+
+def check_payload_masses(records: Iterable[LaunchRecord]) -> None:
+    """Fails if a reported mass is negative or implausibly high for its vehicle."""
+    for record in records:
+        mass = record.payload_mass
+        if mass is None:
+            continue
+        vehicle = record.vehicle
+        family = "Starship" if re.fullmatch(r"Block \d+ Starship", vehicle) else vehicle
+        ceiling = MAX_PAYLOAD_MASS_KG.get(family, DEFAULT_MAX_PAYLOAD_MASS_KG)
+        if not 0 <= mass <= ceiling:
+            raise ImplausibleMassError(
+                f"implausible payload mass for {record.launch_datetime:%Y-%m-%d} "
+                f"{vehicle}: {mass:,} kg (expected 0–{ceiling:,} kg)"
+            )
 
 
 def check_year_coverage(records: Iterable[LaunchRecord], today: datetime.date) -> None:
@@ -105,7 +186,9 @@ def check_recent_launch(records: Iterable[LaunchRecord], today: datetime.date) -
     If new launches stop parsing (say, the current table's layout changes),
     nothing is lost from the published data, so only this check notices.
     """
-    latest = max(record.launch_datetime.date() for record in records)
+    latest = max((record.launch_datetime.date() for record in records), default=None)
+    if latest is None:
+        raise NoRecentLaunchesError("no launches found")
     if (today - latest).days > MAX_DAYS_SINCE_LAUNCH:
         raise NoRecentLaunchesError(
             f"the newest launch found is from {latest.isoformat()}, more than "
@@ -135,11 +218,11 @@ def check_published_launches(
     unmatched = Counter(
         (record.launch_datetime.date(), record.vehicle) for record in records
     )
-    mass_known = {
+    mass_known = Counter(
         (record.launch_datetime.date(), record.vehicle)
         for record in records
         if record.payload_mass is not None
-    }
+    )
 
     missing = []
     lost_mass = []
@@ -149,8 +232,11 @@ def check_published_launches(
             missing.append(launch)
             continue
         unmatched[key] -= 1
-        if launch.mass is not None and key not in mass_known:
-            lost_mass.append(launch)
+        if launch.mass is not None:
+            if mass_known[key] == 0:
+                lost_mass.append(launch)
+            else:
+                mass_known[key] -= 1
 
     problems = []
     if missing:

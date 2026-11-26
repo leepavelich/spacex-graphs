@@ -3,6 +3,8 @@
 import datetime
 import unittest
 
+import pandas as pd
+
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.transform import (
     build_cumulative_frame,
@@ -58,13 +60,27 @@ class TestCleanOrbitCategory(unittest.TestCase):
             "Heliocentric",
         )
 
+    def test_case_insensitive_lookup_and_pattern_fallbacks(self):
+        for raw, expected in (
+            ("HEo FOR P/2 ORBIT", "Other"),
+            ("low earth orbit[42]", "LEO (Other)"),
+            (" polar sso ", "SSO (Other)"),
+            ("super-synchronous gto", "GTO/GEO"),
+            ("transfer to geo", "GTO/GEO"),
+            ("inclined meo", "MEO"),
+            ("Sub–orbital trajectory", "Transatmospheric"),
+            ("transatmospheric test", "Transatmospheric"),
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(clean_orbit_category(raw), expected)
+
 
 class TestCategorizeStarlink(unittest.TestCase):
     def test_starlink_payload_tagged(self):
         self.assertEqual(categorize_starlink("Starlink 6-1", "LEO"), "LEO (Starlink)")
 
     def test_other_payload_unchanged(self):
-        self.assertEqual(categorize_starlink("Crew Dragon", "LEO"), "LEO")
+        self.assertEqual(categorize_starlink("Crew Dragon", "LEO"), "LEO (Other)")
 
     def test_starlink_tag_not_doubled(self):
         self.assertEqual(
@@ -72,38 +88,18 @@ class TestCategorizeStarlink(unittest.TestCase):
         )
 
     def test_starship_starlink_flights(self):
-        """Starlink mass counts as Starlink only once it actually reaches orbit."""
-        suborbital = categorize_starlink("20 Starlink V3", "Transatmospheric")
-        self.assertEqual(clean_orbit_category(suborbital), "Transatmospheric")
-        orbital = categorize_starlink("20 Starlink V3", "LEO")
-        self.assertEqual(clean_orbit_category(orbital), "LEO (Starlink)")
-
-
-class TestDataFrames(unittest.TestCase):
-    def _record(self, year, orbit, payload, mass):
-        return LaunchRecord(
-            year, orbit, payload, mass, datetime.datetime(year, 6, 1), "Falcon 9"
-        )
-
-    def test_build_dataframe_categorizes_orbits(self):
-        df = build_dataframe(
-            [
-                self._record(2023, "LEO", "Starlink 6-1", 17000),
-                self._record(2023, "GTO", "SES-18", 3500),
-            ]
-        )
-        self.assertEqual(list(df["Orbit"]), ["LEO (Starlink)", "GTO/GEO"])
-
-    def test_payload_mass_by_year_orbit_sums_masses(self):
-        df = build_dataframe(
-            [
-                self._record(2023, "LEO", "Starlink 6-1", 17000),
-                self._record(2023, "LEO", "Starlink 6-2", 16000),
-            ]
-        )
-        grouped = payload_mass_by_year_orbit(df)
-        self.assertEqual(len(grouped), 1)
-        self.assertEqual(grouped.iloc[0]["PayloadMass"], 33000)
+        for orbit, expected in (
+            ("—", "Transatmospheric"),
+            ("Transatmospheric", "Transatmospheric"),
+            ("GEO", "GTO/GEO"),
+            ("MEO", "MEO"),
+            ("Ballistic lunar transfer (BLT)", "BLT"),
+            ("LEO / MEO", "Other"),
+            ("Polar (Retrograde)", "LEO (Starlink)"),
+            ("SSO", "SSO (Starlink)"),
+        ):
+            with self.subTest(orbit=orbit):
+                self.assertEqual(categorize_starlink("20 Starlink V3", orbit), expected)
 
 
 class TestOrbitCategories(unittest.TestCase):
@@ -173,8 +169,9 @@ class TestOrbitMappingTable(unittest.TestCase):
             ("Suborbital", "Transatmospheric"),
         ]:
             with self.subTest(orbit=orbit):
-                orbit_with_tag = categorize_starlink("Starlink Group 1", orbit)
-                self.assertEqual(clean_orbit_category(orbit_with_tag), expected)
+                self.assertEqual(
+                    categorize_starlink("Starlink Group 1", orbit), expected
+                )
 
 
 class TestOrbitMapping(unittest.TestCase):
@@ -237,6 +234,8 @@ class TestBuildDataFrame(unittest.TestCase):
             ("Precluded (pre-flight failure)", False),
             ("Unsuccessful", False),
             ("Partial success", False),
+            ("Success (partial failure)", False),
+            ("Success (payload failure)", False),
             ("success", True),
         ]:
             with self.subTest(outcome=outcome):
@@ -270,6 +269,19 @@ class TestChartCaption(unittest.TestCase):
         self.assertIn("CC BY-SA 4.0", caption)
         self.assertIn("through 2 September 2026", caption)
         self.assertIn("1 successful launch with unknown", caption)
+        self.assertIn("counts as 0 kg", caption)
+
+    def test_multiple_unknown_masses_use_plural(self):
+        launch = _launch(datetime.datetime(2026, 5, 1), None)
+        caption = chart_caption(build_dataframe([launch, launch]))
+        self.assertIn("2 successful launches", caption)
+        self.assertIn("count as 0 kg", caption)
+
+    def test_empty_frames_have_no_latest_date(self):
+        for frame in (pd.DataFrame(), build_dataframe([])):
+            caption = chart_caption(frame)
+            self.assertIn("CC BY-SA 4.0", caption)
+            self.assertIn("No launches available", caption)
 
 
 class TestBuildCumulativeFrame(unittest.TestCase):
@@ -294,6 +306,19 @@ class TestBuildCumulativeFrame(unittest.TestCase):
     def test_current_year_ends_today(self):
         records = [_launch(datetime.datetime(2026, 5, 1), 10)]
         self.assertEqual(self._series(records, 2026)[-1], (276, 10))
+
+    def test_period_end_follows_last_day_launches(self):
+        for day in (datetime.date(2025, 12, 31), self.TODAY):
+            with self.subTest(day=day):
+                when = datetime.datetime.combine(day, datetime.time(20))
+                end = when.replace(hour=23, minute=59, second=59)
+                frame = build_cumulative_frame(
+                    build_dataframe([_launch(when, 10), _launch(end, 20)]), self.TODAY
+                )
+                self.assertEqual(frame["DateTime"].tolist()[-3:], [when, end, end])
+                self.assertEqual(
+                    frame["CumulativePayloadMass"].tolist()[-3:], [10, 30, 30]
+                )
 
     def test_midnight_launch_on_jan_1_never_steps_backwards(self):
         records = [_launch(datetime.datetime(2025, 1, 1), 70)]

@@ -3,18 +3,26 @@
 import datetime
 import re
 from collections.abc import Sequence
+from types import MappingProxyType
 from typing import Final
 
 import pandas as pd
 
 from spacex_graphs.config import (
+    GTO_GEO,
     LEO_OTHER,
     LEO_STARLINK,
+    MEO,
     MIN_CUMULATIVE_YEAR,
     ORBIT_MAPPING,
     OTHER_ORBIT,
+    SSO_OTHER,
+    SSO_STARLINK,
+    TRANSATMOSPHERIC,
+    OrbitCategory,
 )
 from spacex_graphs.parsing import FOOTNOTE, LaunchRecord
+from spacex_graphs.validation import OutcomeKind, outcome_kind
 
 
 class Col:
@@ -37,40 +45,52 @@ class Col:
     CUMULATIVE_MASS: Final = "CumulativePayloadMass"
 
 
-def clean_orbit_category(orbit: str) -> str:
-    """Maps a raw orbit description to one of config.ORBIT_CATEGORIES.
+_CASEFOLDED_ORBITS = MappingProxyType(
+    {raw.casefold(): category for raw, category in ORBIT_MAPPING.items()}
+)
 
-    Footnote markers are removed first. Orbits not in ORBIT_MAPPING fall back to
-    a LEO category when they are clearly a low Earth orbit variant (e.g.
-    "Elliptical LEO"), and to "Other" otherwise.
-    """
-    orbit_cleaned = FOOTNOTE.sub("", orbit).strip()
-    if orbit_cleaned in ORBIT_MAPPING:
-        return ORBIT_MAPPING[orbit_cleaned]
-    if re.search(r"\bLEO\b|low earth orbit", orbit_cleaned, flags=re.IGNORECASE):
-        return LEO_STARLINK if "(Starlink)" in orbit_cleaned else LEO_OTHER
+_ORBIT_PATTERNS: tuple[tuple[re.Pattern[str], OrbitCategory], ...] = (
+    (re.compile(r"\b(?:sub[-–— ]?orbital|transatmospheric)\b"), TRANSATMOSPHERIC),
+    (re.compile(r"\b(?:sso|sun[-–— ]synchronous)\b"), SSO_OTHER),
+    (re.compile(r"\b(?:gto|geo|geostationary)\b"), GTO_GEO),
+    (re.compile(r"\b(?:meo|medium earth orbit)\b"), MEO),
+    (re.compile(r"\b(?:leo|low earth orbit)\b"), LEO_OTHER),
+)
+
+
+def _starlink_category(category: OrbitCategory) -> OrbitCategory:
+    if category == LEO_OTHER:
+        return LEO_STARLINK
+    if category == SSO_OTHER:
+        return SSO_STARLINK
+    return category
+
+
+def clean_orbit_category(orbit: str) -> OrbitCategory:
+    """Maps raw orbit text, without footnotes, to a configured category."""
+    cleaned = " ".join(FOOTNOTE.sub("", orbit).casefold().split())
+    known = _CASEFOLDED_ORBITS.get(cleaned)
+    if known is not None:
+        return known
+    for pattern, category in _ORBIT_PATTERNS:
+        if pattern.search(cleaned):
+            return _starlink_category(category) if "(starlink)" in cleaned else category
     return OTHER_ORBIT
 
 
-def categorize_starlink(payload: str, orbit: str) -> str:
-    """Categorizes the orbit as Starlink if the payload contains 'Starlink'.
-
-    The tag is not doubled when Wikipedia already labels the orbit "(Starlink)".
-    """
-    if "Starlink" in payload and "(Starlink)" not in orbit:
-        return f"{orbit} (Starlink)"
-    return orbit
+def categorize_starlink(payload: str, orbit: str) -> OrbitCategory:
+    """Maps the raw orbit first, then tags Starlink payloads in LEO or SSO."""
+    category = clean_orbit_category(orbit)
+    return _starlink_category(category) if "Starlink" in payload else category
 
 
 def launch_succeeded(outcome: str) -> bool:
     """Whether a launch's payload mass counts toward the graphs.
 
-    Wikipedia's outcomes include "Success", "Failure", "Precluded (pre-flight
-    failure)", and, for the 2020 Crew Dragon abort test, "Successful simulated
-    failure", which did deliver its payload. Matching the start of the text
-    keeps "Unsuccessful" or "Partial success" from counting.
+    Qualified failures (even after "Success") don't count. The Crew Dragon
+    abort test is a success because it delivered its test payload.
     """
-    return outcome.lower().startswith("success")
+    return outcome_kind(outcome) is OutcomeKind.SUCCESS
 
 
 def build_dataframe(records: Sequence[LaunchRecord]) -> pd.DataFrame:
@@ -98,9 +118,7 @@ def build_dataframe(records: Sequence[LaunchRecord]) -> pd.DataFrame:
             Col.OUTCOME: [r.outcome for r in records],
         }
     )
-    df[Col.ORBIT] = [
-        clean_orbit_category(categorize_starlink(r.payload, r.orbit)) for r in records
-    ]
+    df[Col.ORBIT] = [categorize_starlink(r.payload, r.orbit) for r in records]
     return df
 
 
@@ -111,15 +129,19 @@ def chart_caption(df: pd.DataFrame) -> str:
     Built only from the data (not the clock), so the charts change only when
     the launches do.
     """
+    source = "Data: Wikipedia contributors, CC BY-SA 4.0"
+    if df.empty:
+        return f"{source}. No launches available."
     latest = df[Col.DATETIME].max()
     unknown = int(
         (df[Col.REPORTED_MASS].isna() & df[Col.OUTCOME].map(launch_succeeded)).sum()
     )
     launches = "launch" if unknown == 1 else "launches"
+    count = "counts" if unknown == 1 else "count"
     return (
-        f"Data: Wikipedia contributors, CC BY-SA 4.0, launches through "
+        f"{source}, launches through "
         f"{latest.day} {latest:%B %Y}. {unknown} successful {launches} with unknown or "
-        "classified payload mass count as 0 kg."
+        f"classified payload mass {count} as 0 kg."
     )
 
 
@@ -129,10 +151,9 @@ def payload_mass_by_year_orbit(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _period_end(year: int, today: datetime.date) -> datetime.datetime:
-    """The last day plotted for a year: today for the current year."""
-    if year == today.year:
-        return datetime.datetime.combine(today, datetime.time())
-    return datetime.datetime(year, 12, 31)
+    """The end of the last day plotted: today for the current year."""
+    last_day = today if year == today.year else datetime.date(year, 12, 31)
+    return datetime.datetime.combine(last_day, datetime.time(23, 59, 59))
 
 
 def build_cumulative_frame(df: pd.DataFrame, today: datetime.date) -> pd.DataFrame:
@@ -145,18 +166,28 @@ def build_cumulative_frame(df: pd.DataFrame, today: datetime.date) -> pd.DataFra
     "CumulativePayloadMass" ready to plot.
     """
     df = df[df[Col.YEAR] >= MIN_CUMULATIVE_YEAR]
-    boundaries: list[dict[str, object]] = []
-    for year in df[Col.YEAR].unique():
-        for when in (datetime.datetime(year, 1, 1), _period_end(year, today)):
-            boundaries.append({Col.YEAR: year, Col.MASS: 0, Col.DATETIME: when})
+    years = df[Col.YEAR].unique()
+    starts = pd.DataFrame(
+        {
+            Col.YEAR: years,
+            Col.MASS: 0,
+            Col.DATETIME: [datetime.datetime(y, 1, 1) for y in years],
+        }
+    )
+    ends = pd.DataFrame(
+        {
+            Col.YEAR: years,
+            Col.MASS: 0,
+            Col.DATETIME: [_period_end(y, today) for y in years],
+        }
+    )
 
     points = pd.concat(
-        [pd.DataFrame(boundaries), df[[Col.YEAR, Col.MASS, Col.DATETIME]]],
+        [starts, df[[Col.YEAR, Col.MASS, Col.DATETIME]], ends],
         ignore_index=True,
     )
     points[Col.DATETIME] = pd.to_datetime(points[Col.DATETIME])
-    # Stable sort keeps the zero-mass January 1st point ahead of any launch
-    # at exactly midnight, so cumulative sums never step backwards
+    # Keep boundaries on the correct side of any launches at the exact time.
     points = points.sort_values([Col.YEAR, Col.DATETIME], kind="stable")
     points[Col.CUMULATIVE_MASS] = points.groupby(Col.YEAR)[Col.MASS].cumsum()
     points[Col.DAY_OF_YEAR] = points[Col.DATETIME].dt.day_of_year

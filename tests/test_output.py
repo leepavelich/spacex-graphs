@@ -5,14 +5,18 @@ import datetime
 import os
 import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import matplotlib
 
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from spacex_graphs import output
+from spacex_graphs.errors import PublishedCsvError
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.transform import build_dataframe
 from spacex_graphs.validation import PublishedLaunch
@@ -34,7 +38,6 @@ def _render_svgs(directory):
         {output.BY_YEAR_SVG: figs[0], output.CUMULATIVE_SVG: figs[1]},
         output_dir=directory,
     )
-    plt.close("all")
     contents = {}
     for name in sorted(os.listdir(directory)):
         with open(os.path.join(directory, name), "rb") as f:
@@ -43,6 +46,9 @@ def _render_svgs(directory):
 
 
 class TestSavePlots(unittest.TestCase):
+    def setUp(self):
+        self.addCleanup(plt.close, "all")
+
     def test_identical_data_produces_identical_svgs(self):
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
             first, second = _render_svgs(a), _render_svgs(b)
@@ -53,6 +59,25 @@ class TestSavePlots(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             for content in _render_svgs(directory).values():
                 self.assertNotIn(b"<dc:date>", content)
+
+    def test_failed_svg_render_keeps_the_original_and_leaves_no_tempfile(self):
+        fig = _figure()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, output.BY_YEAR_SVG)
+            path.write_bytes(b"original")
+
+            def fail(f, **kwargs):
+                f.write(b"partial SVG")
+                self.assertEqual(path.read_bytes(), b"original")
+                raise OSError("disk error")
+
+            with (
+                mock.patch.object(fig, "savefig", side_effect=fail),
+                self.assertRaises(OSError),
+            ):
+                output.save_plots({path.name: fig}, output_dir=directory)
+            self.assertEqual(path.read_bytes(), b"original")
+            self.assertEqual(list(Path(directory).iterdir()), [path])
 
 
 class TestSaveLaunchesCsv(unittest.TestCase):
@@ -120,6 +145,47 @@ class TestSaveLaunchesCsv(unittest.TestCase):
         self.assertEqual(rows[2]["Outcome"], "Failure")
         self.assertEqual(rows[2]["Counted Mass (kg)"], "0")
 
+    def test_same_time_rows_sort_by_vehicle_then_payload_with_utf8_lf(self):
+        when = datetime.datetime(2026, 2, 1)
+        records = [
+            LaunchRecord(2026, "LEO", payload, 1, when, vehicle)
+            for vehicle, payload in (("FH", "C"), ("F9", "Bé"), ("F9", "A"))
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, output.LAUNCHES_CSV)
+            output.save_launches_csv(build_dataframe(records), output_dir=directory)
+            baseline = path.read_bytes()
+            output.save_launches_csv(
+                build_dataframe(records[::-1]), output_dir=directory
+            )
+            self.assertEqual(path.read_bytes(), baseline)
+            self.assertNotIn(b"\r", baseline)
+            self.assertTrue(baseline.endswith(b"\n"))
+            self.assertIn("Bé".encode(), baseline)
+            self.assertEqual(
+                [row.payload for row in output.published_launches(directory)],
+                ["A", "Bé", "C"],
+            )
+
+    def test_failed_csv_write_keeps_the_original_and_leaves_no_tempfile(self):
+        df = build_dataframe([])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, output.LAUNCHES_CSV)
+            path.write_bytes(b"original")
+
+            def fail(f, **kwargs):
+                f.write(b"partial CSV")
+                self.assertEqual(path.read_bytes(), b"original")
+                raise OSError("disk error")
+
+            with (
+                mock.patch.object(pd.DataFrame, "to_csv", side_effect=fail),
+                self.assertRaises(OSError),
+            ):
+                output.save_launches_csv(df, output_dir=directory)
+            self.assertEqual(path.read_bytes(), b"original")
+            self.assertEqual(list(Path(directory).iterdir()), [path])
+
 
 class TestFormulaEscaping(unittest.TestCase):
     def test_formula_like_text_is_escaped_in_the_csv(self):
@@ -172,6 +238,42 @@ class TestPublishedLaunches(unittest.TestCase):
                 ],
             )
 
+    def test_formula_escapes_round_trip_without_stripping_literal_apostrophes(self):
+        payloads = ["=1+1", "'=1+1", "''=1+1", "'Voyager", "\rno", "\nno", "@SUM(A1)"]
+        records = [
+            LaunchRecord(
+                2025, "LEO", payload, 1, datetime.datetime(2025, 1, day), "-vehicle"
+            )
+            for day, payload in enumerate(payloads, 1)
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            output.save_launches_csv(build_dataframe(records), output_dir=directory)
+            baseline = output.published_launches(directory)
+        self.assertEqual([launch.payload for launch in baseline], payloads)
+        self.assertEqual(
+            [launch.vehicle for launch in baseline], ["-vehicle"] * len(payloads)
+        )
+
+    def test_malformed_baseline_raises_a_data_error(self):
+        header = b"Date,Vehicle,Payload,Payload Mass (kg)\n"
+        for contents in (
+            b"",
+            b"Date,Vehicle\n2025-01-01,F9\n",
+            header + b"never,F9,Sat,100\n",
+            header + b"2025-01-01,F9,Sat,not a mass\n",
+            header + b"2025-01-01,F9,Sat\n",
+            header + b'2025-01-01,F9,"Sat,100\n',
+        ):
+            with (
+                self.subTest(contents=contents),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                Path(directory, output.LAUNCHES_CSV).write_bytes(contents)
+                with self.assertRaisesRegex(
+                    PublishedCsvError, "malformed published CSV"
+                ):
+                    output.published_launches(directory)
+
 
 class TestEscapeFormula(unittest.TestCase):
     def test_every_formula_prefix_is_escaped(self):
@@ -184,6 +286,8 @@ class TestEscapeFormula(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(output._escape_formula(text), text)
 
+
+class TestMissingOutputs(unittest.TestCase):
     def test_a_missing_csv_counts_as_a_missing_output(self):
         with tempfile.TemporaryDirectory() as directory:
             for name in output.OUTPUT_FILES:
