@@ -58,14 +58,19 @@ With `--output`, the script writes three files to `outputs/`:
 - `cumulative_payload_mass_to_orbit.svg`: a line chart of cumulative payload mass launched, from 2017 onwards
 - `spacex_launches.csv`: every parsed launch, with its raw and categorized orbit and its outcome. `Payload Mass (kg)` is the mass Wikipedia reports, blank when unknown or classified. `Counted Mass (kg)` is what the graphs sum, which is 0 for failed launches and for launches whose mass is unknown.
 
+Both generated SVGs set `role="img"` and use `aria-labelledby` to point to a `<title>` and a `<desc>` for screen readers. They switch to a dark palette automatically when the viewer matches `prefers-color-scheme: dark`. The cumulative chart labels highlighted years directly and uses a shared 366-day leap-year x-axis so the same calendar dates line up in leap and common years.
+
 Downloaded pages are cached in `.cache/`. The script asks Wikipedia for updates without re-downloading unchanged pages. It skips regeneration only if every output file still exists and the launch data, UTC date, and `code_version()` fingerprint of the source code and rendering libraries all match the last successful run.
 
-The run fails with exit code 1, rather than publishing questionable graphs, when:
+The run exits with code 1 and does not publish when any of these checks fails.
 
-- a page parses to no launches, or a past year has none;
-- a launch in the published CSV is missing, or its known mass has become unknown, which usually means part of a table stopped parsing;
-- the newest launch found is more than 30 days old, which usually means new launches have stopped parsing;
-- Wikipedia can't be reached and the cached pages are more than three days old, or there are no cached pages.
+- A Wikipedia page parses to no launches, or a completed year from 2012 onwards has no launches.
+- A Wikipedia page can't be fetched and has no usable cached copy confirmed current within the past three days.
+- No launch is found within the past 30 days.
+- A launch in the published CSV is missing, its known mass becomes unknown, or its reported mass drops by both more than 50% and at least 1,000 kg.
+- A reported payload mass is negative or exceeds its vehicle's plausibility limit.
+- No outcomes are classified as successful, or more than 5% of outcomes are unrecognized.
+- The published baseline CSV exists but is malformed.
 
 A GitHub Actions workflow runs the tests and renders daily in Docker, then commits any changed outputs. See [Output methodology](outputs/README.md#methodology) for how the CSV and graphs handle rideshares and incomplete mass data.
 
@@ -74,7 +79,7 @@ A GitHub Actions workflow runs the tests and renders daily in Docker, then commi
 Open the failed run linked in the `scheduled-graph-update` issue and read its annotations and job summary. Close the issue once a scheduled run succeeds.
 
 - If the previous Falcon launch year is missing around New Year, check whether Wikipedia moved it to its own archive. Add the new page and its table layout to `WIKIPEDIA_PAGES` in `config.py`.
-- If a published launch or its mass goes missing, check Wikipedia and the parser first. If Wikipedia really removed a launch or mass or corrected a launch date, explain the correction in a PR and delete `outputs/spacex_launches.csv` in that PR. The next scheduled run will establish a fresh validation baseline.
+- If a published launch or its mass goes missing, or its reported mass drops sharply, check Wikipedia and the parser first. If the source change is genuine and should pass, explain it in a PR and delete `outputs/spacex_launches.csv` in that PR. The next scheduled run will establish a fresh validation baseline.
 
 ## Project Structure
 
@@ -104,7 +109,7 @@ From the repository root, run:
 scripts/check.sh
 ```
 
-The script runs the Python checks, dependency audits, and lockfile sync check below. It also runs `actionlint` if installed. CI runs these checks on every pull request and weekly, and uses digest-pinned containers for `actionlint` and `hadolint`:
+The script runs the Python checks, dependency audits, and a read-only lockfile sync check. It also runs `actionlint`, `hadolint`, and `shellcheck` when installed locally. CI runs these checks on every pull request, on pushes to `main`, and weekly. It runs the three infrastructure linters in hardened, digest-pinned containers and runs the full unit suite in the same hardened runtime image as the scheduled workflow.
 
 ```bash
 ruff check .
@@ -115,13 +120,13 @@ coverage run --branch -m unittest discover -s tests -v
 coverage report --fail-under=95 --show-missing
 pip-audit --progress-spinner off --disable-pip --require-hashes -r requirements.txt
 pip-audit --progress-spinner off --disable-pip --require-hashes -r requirements-dev.txt
-scripts/update-locks.sh
-git diff --exit-code -- requirements.txt requirements-dev.txt
+scripts/check.sh --locks-only
 # If installed locally, these are the same linters CI runs in Docker
 actionlint
 hadolint Dockerfile
+shellcheck scripts/*.sh
 
-# Docker smoke checks
+# Docker smoke checks and unit tests
 docker build --tag spacex-graphs .
 docker run --rm spacex-graphs --help
 docker run --rm --user 12345:12345 --read-only --tmpfs /tmp \
@@ -129,6 +134,10 @@ docker run --rm --user 12345:12345 --read-only --tmpfs /tmp \
 docker run --rm --user 12345:12345 --read-only --tmpfs /tmp \
   --cap-drop ALL --security-opt no-new-privileges:true \
   --entrypoint python3 spacex-graphs -m spacex_graphs --help
+docker run --rm --network none --read-only --tmpfs /tmp \
+  --cap-drop ALL --security-opt no-new-privileges:true --user 12345:12345 \
+  -v "$PWD/tests:/app/tests:ro" -v "$PWD/outputs:/app/outputs:ro" \
+  --entrypoint python3 spacex-graphs -m unittest discover -s tests
 ```
 
 Dependencies are declared in `requirements.in` and `requirements-dev.in` and locked, with hashes, in the matching `.txt` files. Edit the `.in` file and run `scripts/update-locks.sh` to change a dependency. For bulk upgrades, match Dependabot's seven-day cooldown by setting a UTC cutoff:
@@ -140,7 +149,7 @@ UV_EXCLUDE_NEWER="$cutoff" scripts/update-locks.sh --upgrade
 
 Set the environment variable rather than passing `--exclude-newer`, which would change the lock header. CI fails if a lock doesn't match its `.in` file.
 
-Leave committing the generated SVGs and CSV to the scheduled workflow. Use Docker for preview renders, since native Python runs can pick different fonts.
+Leave committing the generated SVGs and CSV to the scheduled workflow. Use the CI Docker platform for preview renders when you need a byte-for-byte match. Matplotlib uses its bundled DejaVu Sans font, but FreeType builds and other platform rendering differences can change a native render.
 
 ## License
 
