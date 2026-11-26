@@ -1,9 +1,15 @@
 """Tests for the pure parsing helpers."""
 
 import datetime
+import locale
+import random
 import unittest
 
+from bs4 import BeautifulSoup
+
 from spacex_graphs.parsing import (
+    _cell_text,
+    _table_grid,
     parse_launch_datetime,
     parse_launch_page,
     parse_payload_mass_text,
@@ -110,7 +116,6 @@ class TestParsePayloadMassText(unittest.TestCase):
 
     def test_unrelated_numbers_are_ignored_when_kg_present(self):
         self.assertEqual(parse_payload_mass_text("5,000 kg (2019-2020 est.)"), 5000)
-        self.assertEqual(parse_payload_mass_text("2 × 1,200 kg"), 1200)
 
     def test_space_separated_thousands(self):
         self.assertEqual(parse_payload_mass_text("16 000 kg"), 16000)
@@ -338,11 +343,10 @@ class TestPageLayouts(unittest.TestCase):
 
     def test_every_page_has_a_parser_and_a_unique_name_and_url(self):
         from spacex_graphs.config import WIKIPEDIA_PAGES
-        from spacex_graphs.parsing import _ROW_PARSERS
 
         for page in WIKIPEDIA_PAGES:
             with self.subTest(page=page.name):
-                self.assertIn(page.layout, _ROW_PARSERS)
+                self.assertEqual(parse_launch_page(page.layout, ""), [])
         self.assertEqual(len({p.name for p in WIKIPEDIA_PAGES}), len(WIKIPEDIA_PAGES))
         self.assertEqual(len({p.url for p in WIKIPEDIA_PAGES}), len(WIKIPEDIA_PAGES))
 
@@ -370,6 +374,546 @@ class TestPageStructure(unittest.TestCase):
         )
         (record,) = parse_launch_page("starship", html)
         self.assertEqual(record.vehicle, "Starship")
+
+
+class TestParseLaunchDatetimeEdgeCases(unittest.TestCase):
+    def test_one_digit_hours_and_seconds(self):
+        self.assertEqual(
+            parse_launch_datetime("4 June 2010 8:45"),
+            datetime.datetime(2010, 6, 4, 8, 45),
+        )
+        self.assertEqual(
+            parse_launch_datetime("May 27, 2025 23:36:28"),
+            datetime.datetime(2025, 5, 27, 23, 36),
+        )
+
+    def test_utc_time_wins_over_local_time(self):
+        for text in (
+            "1 May 2024 14:30 EST (19:30 UTC)",
+            "1 May 2024 14:30 EST (19:30:05 utc)",
+            "19:30 UTC 1 May 2024 (14:30 EST)",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(
+                    parse_launch_datetime(text), datetime.datetime(2024, 5, 1, 19, 30)
+                )
+
+    def test_abbreviated_and_any_case_english_months(self):
+        expected = datetime.datetime(2025, 9, 1)
+        for text in (
+            "Sept 1, 2025",
+            "Sep. 1, 2025",
+            "1 Sep 2025",
+            "1 sept 2025",
+            "1 SEPTEMBER 2025",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(parse_launch_datetime(text), expected)
+
+    def test_words_that_merely_start_with_a_month_are_not_months(self):
+        for text in (
+            "Maybe 12, 2026",
+            "12 Mayday 2026",
+            "Marching 3, 2026",
+            "3 Junk 2026",
+            "Decade 1, 2026",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_launch_datetime(text))
+
+    def test_date_ranges_are_not_launch_dates(self):
+        for text in (
+            "1–3 May 2026",
+            "1-3 May 2026",
+            "May 31 – June 2, 2026",
+            "1 May 2026 – 3 May 2026",
+            "30 April to 2 May 2026",
+            "1 May 2026 to June 2026",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_launch_datetime(text))
+
+    def test_dash_before_a_time_is_not_a_range(self):
+        self.assertEqual(
+            parse_launch_datetime("4 June 2010 – 18:45"),
+            datetime.datetime(2010, 6, 4, 18, 45),
+        )
+
+    def test_invalid_times_are_rejected(self):
+        for text in ("1 May 2024 24:00", "1 May 2024 12:60"):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_launch_datetime(text))
+
+    def test_year_must_be_exactly_four_digits(self):
+        self.assertIsNone(parse_launch_datetime("1 May 20245"))
+        self.assertIsNone(parse_launch_datetime("1 May 0000"))
+
+    def test_month_names_do_not_depend_on_the_locale(self):
+        original = locale.setlocale(locale.LC_TIME)
+        for name in ("fr_FR.UTF-8", "de_DE.UTF-8", "ru_RU.UTF-8", "tr_TR.UTF-8"):
+            try:
+                locale.setlocale(locale.LC_TIME, name)
+            except locale.Error:
+                continue
+            try:
+                self.assertEqual(
+                    parse_launch_datetime("4 June 2010 18:45"),
+                    datetime.datetime(2010, 6, 4, 18, 45),
+                )
+                self.assertIsNone(parse_launch_datetime("4 juin 2010"))
+            finally:
+                locale.setlocale(locale.LC_TIME, original)
+            return
+        self.skipTest("no non-English locale is installed")
+
+
+class TestParsePayloadMassEdgeCases(unittest.TestCase):
+    def test_tonne_spellings(self):
+        self.assertEqual(parse_payload_mass_text("16.5 t"), 16500)
+        self.assertEqual(parse_payload_mass_text("16.5 metric tonnes"), 16500)
+        self.assertEqual(parse_payload_mass_text("1 Tonne"), 1000)
+
+    def test_kilogram_spellings(self):
+        self.assertEqual(parse_payload_mass_text("12 kilograms"), 12)
+        self.assertEqual(parse_payload_mass_text("1 kilogram"), 1)
+        self.assertEqual(parse_payload_mass_text("12 KG"), 12)
+
+    def test_capital_t_and_t_compounds_are_not_tonnes(self):
+        for text in (
+            "Unknown (20 T-class satellites)",
+            "Classified (Intelsat 15T)",
+            "16.5t",
+            "3 t/s",
+            "4 T",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_payload_mass_text(text))
+
+    def test_numbers_inside_words_or_numbers_are_not_masses(self):
+        for text in ("Intelsat15 kg", "1.5e3 kg", "Group_7 kg"):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_payload_mass_text(text))
+
+    def test_hyphenated_label_is_not_merged_with_the_mass(self):
+        self.assertEqual(parse_payload_mass_text("CAS500-2 500 kg"), 500)
+        self.assertEqual(parse_payload_mass_text("CAS500-2 (500 kg)"), 500)
+
+    def test_dashed_label_before_a_mass_is_not_a_range(self):
+        self.assertEqual(parse_payload_mass_text("Flight 12 — 5,000 kg"), 5000)
+        self.assertEqual(parse_payload_mass_text("Flight 12 – 5,000 kg"), 5000)
+
+    def test_spaced_en_dash_range(self):
+        self.assertEqual(parse_payload_mass_text("5,000 – 6,000 kg"), 5500)
+
+    def test_unicode_hyphens(self):
+        self.assertEqual(parse_payload_mass_text("5,000\u20116,000 kg"), 5500)
+
+    def test_negative_masses_are_rejected(self):
+        for text in ("-500 kg", "\u2212500 kg", "(-500 kg)"):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_payload_mass_text(text))
+
+    def test_summed_masses(self):
+        self.assertEqual(parse_payload_mass_text("1,500 kg + 800 kg"), 2300)
+        self.assertEqual(
+            parse_payload_mass_text("1,500 kg (3,300 lb) + 800 kg (1,800 lb)"), 2300
+        )
+        self.assertEqual(parse_payload_mass_text("1 t + 500 kg"), 500)
+
+    def test_multiplied_masses(self):
+        for text, expected in (
+            ("2 × 500 kg", 1000),
+            ("2×500 kg", 1000),
+            ("2 x 1,200 kg", 2400),
+            ("3 X 1.5 t", 4500),
+            ("2 × 500 kg + 100 kg", 1100),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(parse_payload_mass_text(text), expected)
+
+    def test_count_without_a_mass_is_not_a_mass(self):
+        self.assertIsNone(parse_payload_mass_text("test pods x 2"))
+
+    def test_overflowing_number_is_not_a_mass(self):
+        self.assertIsNone(parse_payload_mass_text("9" * 400 + " t"))
+
+
+class TestCellTextHiddenMarkup(unittest.TestCase):
+    def _cell(self, html):
+        soup = BeautifulSoup(f"<table><tr><td>{html}</td></tr></table>", "html.parser")
+        assert soup.td is not None
+        return soup.td
+
+    def test_hidden_markup_is_removed(self):
+        for html in (
+            '<style data-mw-deduplicate="TemplateStyles:r1">.x{width:5 kg}</style>SES-8',
+            '<script>var a = "12 kg";</script>SES-8',
+            '<span class="sr-only">hidden</span>SES-8',
+            '<span class="sortkey">0042</span>SES-8',
+            '<span style="DISPLAY : None">0042</span>SES-8',
+            '<span style="color:red;display: none;">0042</span>SES-8',
+            'SES-8<sup class="mw-ref reference"><a>[18]</a></sup>',
+            '<span class="sortkey"><span style="display:none">1</span>2</span>SES-8',
+        ):
+            with self.subTest(html=html):
+                self.assertEqual(_cell_text(self._cell(html)), "SES-8")
+
+    def test_visible_styles_are_kept(self):
+        self.assertEqual(
+            _cell_text(self._cell('<span style="display:inline">SES-8</span>')),
+            "SES-8",
+        )
+
+    def test_cell_is_not_modified(self):
+        cell = self._cell('SES-8<sup class="reference">[1]</sup><br>Extra')
+        before = str(cell)
+        self.assertEqual(_cell_text(cell), "SES-8 Extra")
+        self.assertEqual(_cell_text(cell, "; "), "SES-8; Extra")
+        self.assertEqual(str(cell), before)
+
+    def test_hidden_markup_in_date_cell_is_ignored(self):
+        date = (
+            "<style>.mw-parser-output .x{margin:1 May 2001 11:11}</style>"
+            '<span class="sortkey">000000002025-01-03-0000 12:34</span>'
+            '<span style="display:none">7 July 2007 07:07</span>'
+            "3 January 2025<br>01:27"
+            '<sup class="reference">[5 June 2020 10:10]</sup>'
+        )
+        html = _starship_table(_falcon_row(date, "F9", "Sat", "1 kg", "LEO", "Success"))
+        (record,) = parse_launch_page("falcon", html)
+        self.assertEqual(record.launch_datetime, datetime.datetime(2025, 1, 3, 1, 27))
+
+    def test_hidden_markup_in_starship_date_cell_is_ignored(self):
+        date = '<span class="sr-only">1 May 2001</span>May 27, 2025 23:36'
+        html = _starship_table(
+            _starship_row(date, "Block 2 S35", "X", "1 kg", "LEO", "Success")
+        )
+        (record,) = parse_launch_page("starship", html)
+        self.assertEqual(record.launch_datetime, datetime.datetime(2025, 5, 27, 23, 36))
+
+
+def _cells_row(*cells):
+    """A row of td cells, each either text or a (text, attributes) pair."""
+    html = ""
+    for cell in cells:
+        text, attrs = cell if isinstance(cell, tuple) else (cell, "")
+        html += f"<td {attrs}>{text}</td>"
+    return f"<tr>{html}</tr>"
+
+
+class TestTableStructure(unittest.TestCase):
+    def test_nested_table_cells_do_not_become_columns(self):
+        nested = "<table><tr><td>Sat A</td><td>Sat B</td></tr></table>"
+        html = _starship_table(
+            _falcon_row("3 January 2025", "F9", nested, "1 kg", "LEO", "Success")
+        )
+        (record,) = parse_launch_page("falcon", html)
+        self.assertEqual(record.payload_mass, 1)
+        self.assertEqual(record.orbit, "LEO")
+
+    def test_rows_of_nested_tables_are_not_launch_rows(self):
+        inner = _falcon_row("4 January 2025", "F9", "Inner", "2 kg", "LEO", "Success")
+        outer = _falcon_row(
+            "3 January 2025", "F9", f"Outer<table>{inner}</table>", "1 kg", "LEO", "Ok"
+        )
+        records = parse_launch_page("falcon", _starship_table(outer))
+        self.assertEqual([r.launch_datetime.day for r in records], [3])
+
+    def test_rows_inside_tbody_and_thead_are_read(self):
+        row = _falcon_row("3 January 2025", "F9", "Sat", "1 kg", "LEO", "Success")
+        html = (
+            '<table class="wikitable"><thead><tr><th>Date</th></tr></thead>'
+            f"<tbody>{row}</tbody></table>"
+        )
+        self.assertEqual(len(parse_launch_page("falcon", html)), 1)
+
+    def test_flight_number_header_cell_does_not_shift_columns(self):
+        row = _falcon_row("3 January 2025", "F9", "Sat", "1 kg", "LEO", "Success")
+        row = row.replace("<tr>", '<tr><th scope="row" rowspan="2">42</th>', 1)
+        description = '<tr><td colspan="9">Launched on 9 May 2024 at 10:00.</td></tr>'
+        records = parse_launch_page("falcon", _starship_table(row, description))
+        self.assertEqual([r.payload for r in records], ["Sat"])
+
+    def test_colspan_cell_keeps_later_columns_aligned(self):
+        row = _cells_row(
+            "3 January 2025",
+            ("F9 B5, CCSFS", 'colspan="2"'),
+            "Sat",
+            "1 kg",
+            "LEO",
+            "SpaceX",
+            "Success",
+            "Success (ASOG)",
+        )
+        (record,) = parse_launch_page("falcon", _starship_table(row))
+        self.assertEqual((record.payload, record.orbit), ("Sat", "LEO"))
+
+    def test_eleven_column_falcon_rows(self):
+        row = _cells_row(
+            "4 June 2010 18:45",
+            "F9 v1.0 B0003",
+            "CCAFS, SLC-40",
+            "Dragon Qualification Unit",
+            "Unknown",
+            "LEO",
+            "SpaceX",
+            "Success",
+            "Failure (parachute)",
+            "extra 1",
+            "extra 2",
+        )
+        (record,) = parse_launch_page("falcon", _starship_table(row))
+        self.assertEqual(record.launch_datetime, datetime.datetime(2010, 6, 4, 18, 45))
+        self.assertEqual(record.payload, "Dragon Qualification Unit")
+        self.assertIsNone(record.payload_mass)
+        self.assertEqual(record.outcome, "Success")
+
+    def test_ten_column_falcon_rows_are_skipped(self):
+        row = _cells_row("4 June 2010", *["x"] * 9)
+        self.assertEqual(parse_launch_page("falcon", _starship_table(row)), [])
+
+    def test_unknown_layout_is_rejected(self):
+        with self.assertRaises(AssertionError):
+            parse_launch_page("atlas", "")  # type: ignore[arg-type]
+
+
+class TestMultiPayloadLaunches(unittest.TestCase):
+    """Launches listed as one row per payload, sharing cells through rowspan."""
+
+    def _launch(self, payload_rows, *, rows=None):
+        rows = rows or len(payload_rows)
+        span = f'rowspan="{rows}"'
+        (payload, mass, outcome), *more = payload_rows
+        first = _cells_row(
+            ("3 January 2025 01:27", span),
+            ("F9 B5 B1086", span),
+            ("CCSFS, SLC-40", span),
+            payload,
+            mass,
+            ("GTO<sup class='reference'>[3]</sup>", span),
+            "SpaceX",
+            outcome,
+            ("Success (ASOG)", span),
+        )
+        rest = []
+        for payload, mass, outcome in more:
+            cells = [payload, mass, "Customer"]
+            if outcome is not None:
+                cells.append(outcome)
+            rest.append(_cells_row(*cells))
+        return first.replace("<tr>", f"<tr><th {span}>7</th>", 1) + "".join(rest)
+
+    def test_payloads_sharing_a_date_cell_are_one_launch(self):
+        html = _starship_table(
+            self._launch(
+                [
+                    (
+                        "ViaSat-3 Americas",
+                        "6,400 kg (14,100 lb)",
+                        ("Success", 'rowspan="3"'),
+                    ),
+                    ("Aurora 4A", "300 kg", None),
+                    ("GS-1", "22 kg", None),
+                ]
+            )
+        )
+        (record,) = parse_launch_page("falcon", html)
+        self.assertEqual(record.payload, "ViaSat-3 Americas + Aurora 4A + GS-1")
+        self.assertEqual(record.payload_mass, 6722)
+        self.assertEqual(record.orbit, "GTO")
+        self.assertEqual(record.outcome, "Success")
+        self.assertEqual(record.launch_datetime, datetime.datetime(2025, 1, 3, 1, 27))
+
+    def test_secondary_payload_outcome_is_kept_alongside_the_launchs(self):
+        html = _starship_table(
+            self._launch(
+                [
+                    ("SpaceX CRS-1", "4,700 kg", "Success"),
+                    ("Orbcomm-OG2", "172 kg", "Partial failure"),
+                ]
+            )
+        )
+        (record,) = parse_launch_page("falcon", html)
+        self.assertEqual(record.payload_mass, 4872)
+        self.assertEqual(record.outcome, "Success; Partial failure")
+
+    def test_unknown_secondary_mass_leaves_the_known_total(self):
+        html = _starship_table(
+            self._launch(
+                [
+                    ("Primary", "Unknown", "Success"),
+                    ("Secondary", "28 kg", "Success"),
+                    ("Tertiary", "Classified", "Success"),
+                ]
+            )
+        )
+        (record,) = parse_launch_page("falcon", html)
+        self.assertEqual(record.payload_mass, 28)
+        self.assertEqual(record.outcome, "Success")
+
+    def test_no_reported_mass_is_none(self):
+        html = _starship_table(
+            self._launch([("A", "Unknown", "Success"), ("B", "—", "Success")])
+        )
+        (record,) = parse_launch_page("falcon", html)
+        self.assertIsNone(record.payload_mass)
+
+    def test_mass_cell_shared_by_payloads_counts_once(self):
+        first = _cells_row(
+            ("3 January 2025", 'rowspan="2"'),
+            ("F9", 'rowspan="2"'),
+            ("CCSFS", 'rowspan="2"'),
+            "Sat A",
+            ("1,000 kg", 'rowspan="2"'),
+            ("LEO", 'rowspan="2"'),
+            "SpaceX",
+            ("Success", 'rowspan="2"'),
+            ("Success", 'rowspan="2"'),
+        )
+        second = _cells_row("Sat B", "SpaceX")
+        (record,) = parse_launch_page("falcon", _starship_table(first, second))
+        self.assertEqual(record.payload, "Sat A + Sat B")
+        self.assertEqual(record.payload_mass, 1000)
+
+    def test_description_row_after_payload_rows_is_not_a_launch(self):
+        launch = self._launch(
+            [("A", "1 kg", "Success"), ("B", "2 kg", "Success")], rows=2
+        )
+        description = (
+            '<tr><td colspan="9">Rescheduled from 4 June 2024 12:00.</td></tr>'
+        )
+        records = parse_launch_page("falcon", _starship_table(launch, description))
+        self.assertEqual([(r.payload, r.payload_mass) for r in records], [("A + B", 3)])
+
+    def test_cell_spanning_two_launches_reads_the_same_for_both(self):
+        first = _falcon_row("3 January 2025", "F9", "A", "1 kg", "x", "Success")
+        second = _falcon_row("4 January 2025", "F9", "B", "2 kg", "x", "Success")
+        orbit = '<td rowspan="2">GTO<sup class="reference">[3]</sup></td>'
+        first = first.replace("<td>x</td>", orbit)
+        second = second.replace("<td>x</td>", "")
+        records = parse_launch_page("falcon", _starship_table(first, second))
+        self.assertEqual([r.orbit for r in records], ["GTO", "GTO"])
+        self.assertEqual([r.payload for r in records], ["A", "B"])
+
+    def test_starship_payload_rows(self):
+        first = _starship_row(
+            "May 27, 2025 23:36",
+            "Block 2 S35",
+            "8 Starlink simulators",
+            "16 t",
+            "x",
+            "Success",
+        )
+        first = first.replace("<td>May 27", '<td rowspan="2">May 27', 1)
+        first = first.replace("<td>x</td>", '<td rowspan="2">Transatmospheric</td>')
+        second = _cells_row("Banana", "1 kg", "SpaceX", "Success")
+        # The second row needs the shared cells before and after its payload
+        for column in ("Block 3 B21", "Block 2 S35", "Starbase, OLP-2"):
+            first = first.replace(
+                f"<td>{column}</td>", f'<td rowspan="2">{column}</td>'
+            )
+        for column in ("Success (OLP-2)", "Controlled (ocean)"):
+            first = first.replace(
+                f"<td>{column}</td>", f'<td rowspan="2">{column}</td>'
+            )
+        (record,) = parse_launch_page("starship", _starship_table(first, second))
+        self.assertEqual(record.payload, "8 Starlink simulators + Banana")
+        self.assertEqual(record.payload_mass, 16001)
+        self.assertEqual(record.vehicle, "Block 2 Starship")
+
+
+class TestTableGrid(unittest.TestCase):
+    def _grid(self, html):
+        table = BeautifulSoup(html, "html.parser").table
+        assert table is not None
+        return [[cell.get_text() for cell in row] for row in _table_grid(table)]
+
+    def test_rowspan_and_colspan_fill_their_slots(self):
+        html = (
+            "<table>"
+            '<tr><td rowspan="2" colspan="2">a</td><td>b</td></tr>'
+            "<tr><td>c</td></tr>"
+            "<tr><td>d</td><td>e</td><td>f</td></tr>"
+            "</table>"
+        )
+        self.assertEqual(
+            self._grid(html), [["a", "a", "b"], ["a", "a", "c"], ["d", "e", "f"]]
+        )
+
+    def test_spans_are_bounded_and_tolerant(self):
+        html = (
+            "<table>"
+            '<tr><td rowspan="0" colspan="banana">a</td><td colspan="99999999">b</td></tr>'
+            "</table>"
+        )
+        (row,) = self._grid(html)
+        self.assertEqual(row[0], "a")
+        self.assertEqual(len(row), 1001)
+
+    def test_span_running_past_the_last_row_is_harmless(self):
+        html = '<table><tr><td rowspan="9">a</td><td>b</td></tr></table>'
+        self.assertEqual(self._grid(html), [["a", "b"]])
+
+
+_FUZZ_WORDS = (
+    "1 4 12 31 2025 0 999 1,500 6,000 .5 - , : + ( ) [ ] [12] ~ ; x e kg t T tonnes"
+    " metric lb lbs kilograms to May Sept June December Maybe UTC EST Unknown"
+    " \u2013 \u2014 \u2011 \u2212 \u00d7 \u00a0 \u202f \U0001f680"
+)
+_FUZZ_PIECES = (*_FUZZ_WORDS.split(" "), " ", "\n", "\u0000", "9" * 40)
+
+
+class TestFuzz(unittest.TestCase):
+    """Arbitrary cell text never raises, and gives a sane result or None."""
+
+    def _texts(self, count):
+        rng = random.Random(20261125)
+        for _ in range(count):
+            yield "".join(rng.choice(_FUZZ_PIECES) for _ in range(rng.randint(0, 14)))
+            yield "".join(
+                chr(rng.randint(0, 0x2FFF)) for _ in range(rng.randint(0, 30))
+            )
+
+    def test_parse_launch_datetime_never_raises(self):
+        for text in self._texts(3000):
+            result = parse_launch_datetime(text)
+            if result is not None:
+                self.assertIsInstance(result, datetime.datetime)
+                self.assertIsNone(result.tzinfo)
+
+    def test_parse_payload_mass_text_never_raises(self):
+        for text in self._texts(3000):
+            result = parse_payload_mass_text(text)
+            if result is not None:
+                self.assertIsInstance(result, int)
+                self.assertGreaterEqual(result, 0)
+
+    def test_parse_launch_page_never_raises(self):
+        rng = random.Random(7)
+        tags = (
+            "<tr>",
+            "</tr>",
+            "<td>",
+            "</td>",
+            "<th>",
+            "<table>",
+            "</table>",
+            "<tbody>",
+            "<br>",
+            "</sup>",
+            '<td rowspan="3">',
+            '<td colspan="2">',
+            '<sup class="reference">',
+            "1 May 2025",
+            "5 kg",
+            "Block 2",
+        )
+        for _ in range(300):
+            body = "".join(rng.choice(tags) for _ in range(rng.randint(0, 60)))
+            html = f'<table class="wikitable">{body}</table>'
+            for layout in ("falcon", "starship"):
+                for record in parse_launch_page(layout, html):
+                    self.assertIsInstance(record.launch_datetime, datetime.datetime)
 
 
 if __name__ == "__main__":
