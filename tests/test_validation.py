@@ -1,8 +1,11 @@
 """Tests for the completeness checks; all pure, so no mocks."""
 
+import csv
 import datetime
 import unittest
+from pathlib import Path
 
+from spacex_graphs.errors import ImplausibleMassError, OutcomeIntegrityError
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.validation import (
     EmptyPageError,
@@ -10,12 +13,15 @@ from spacex_graphs.validation import (
     NoRecentLaunchesError,
     PublishedLaunch,
     PublishedLaunchesLostError,
+    check_outcomes,
     check_pages_not_empty,
+    check_payload_masses,
     check_published_launches,
     check_recent_launch,
     check_year_coverage,
     drop_duplicate_launches,
     drop_future_launches,
+    drop_unlaunched,
 )
 
 TODAY = datetime.date(2026, 10, 3)
@@ -59,6 +65,15 @@ class TestDropDuplicateLaunches(unittest.TestCase):
         starship = LaunchRecord(2025, "LEO", "B", 1, when, "Block 2 Starship")
         self.assertEqual(drop_duplicate_launches([falcon, starship])[1], 0)
 
+    def test_duplicate_with_known_mass_is_preferred_without_reordering(self):
+        known = _launch(2026, 10, 1)
+        unknown = known._replace(payload_mass=None)
+        unrelated = _launch(2026, 10, 2)
+        self.assertEqual(
+            drop_duplicate_launches([unknown, unrelated, known, unknown]),
+            ([known, unrelated], 2),
+        )
+
 
 class TestDropFutureLaunches(unittest.TestCase):
     def test_today_is_kept_and_tomorrow_dropped(self):
@@ -78,6 +93,84 @@ class TestCheckYearCoverage(unittest.TestCase):
 
     def test_years_before_2012_and_the_current_year_may_be_empty(self):
         check_year_coverage([_launch(y) for y in range(2012, 2026)], TODAY)
+
+
+class TestOutcomeAndMassIntegrity(unittest.TestCase):
+    def test_unlaunched_statuses_are_dropped_without_changing_outcomes(self):
+        today = _launch(2026, 10, 3)
+        precluded = today._replace(outcome="Precluded (pre-flight failure)")
+        not_launched = [
+            today._replace(outcome=outcome)
+            for outcome in (
+                " Scheduled (23:00 UTC)",
+                "PLANNED",
+                "TBD",
+                " Scrubbed ",
+                "Upcoming",
+                "Launch delayed until tomorrow",
+            )
+        ]
+        self.assertEqual(
+            drop_unlaunched([*not_launched, today, precluded]), ([today, precluded], 6)
+        )
+
+    def test_no_successful_launches_is_fatal_even_if_outcomes_are_recognized(self):
+        launch = _launch(2026)
+        with self.assertRaisesRegex(OutcomeIntegrityError, "no successful launches"):
+            check_outcomes(
+                [
+                    launch._replace(outcome="Failure"),
+                    launch._replace(outcome="Success (payload failure)"),
+                ]
+            )
+
+    def test_only_a_small_fraction_of_unknown_outcomes_is_tolerated(self):
+        launch = _launch(2026)
+        unknown = launch._replace(outcome="Low Earth orbit")
+        check_outcomes([launch] * 19 + [unknown])
+        with self.assertRaisesRegex(OutcomeIntegrityError, "1 of 19.*unrecognized"):
+            check_outcomes([launch] * 18 + [unknown])
+
+    def test_vehicle_mass_limits_and_unknown_vehicle_fallback(self):
+        for vehicle, ceiling in (
+            ("Falcon 1", 2_000),
+            ("Falcon 9", 30_000),
+            ("Falcon Heavy", 75_000),
+            ("Starship", 300_000),
+            ("Block 3 Starship", 300_000),
+            ("Future vehicle", 300_000),
+        ):
+            with self.subTest(vehicle=vehicle):
+                launch = _launch(2026, vehicle=vehicle)
+                check_payload_masses(
+                    launch._replace(payload_mass=mass) for mass in (None, 0, ceiling)
+                )
+                for mass in (-1, ceiling + 1):
+                    with self.assertRaisesRegex(ImplausibleMassError, vehicle):
+                        check_payload_masses([launch._replace(payload_mass=mass)])
+
+    def test_all_committed_csv_rows_pass_the_integrity_checks(self):
+        path = Path(__file__).resolve().parents[1] / "outputs" / "spacex_launches.csv"
+        if not path.exists():
+            self.skipTest("the published baseline was reset")
+        with path.open(encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+        records = [
+            LaunchRecord(
+                int(row["Year"]),
+                row["Orbit"],
+                row["Payload"],
+                int(row["Payload Mass (kg)"]) if row["Payload Mass (kg)"] else None,
+                datetime.datetime.fromisoformat(row["Date"]),
+                row["Vehicle"],
+                row["Outcome"],
+            )
+            for row in rows
+        ]
+        self.assertGreater(len(records), 0)
+        check_payload_masses(records)
+        check_outcomes(records)
+        self.assertEqual(drop_unlaunched(records), (records, 0))
 
 
 def _published(launch, mass=1):
@@ -134,6 +227,19 @@ class TestCheckPublishedLaunches(unittest.TestCase):
             check_published_launches([*unknown, *self.records[3:]], self.published)
         self.assertIn("3 published launches lost their mass", str(ctx.exception))
 
+    def test_two_known_masses_on_one_day_need_two_known_matches(self):
+        first = _launch(2026, 5, 5)
+        second = first._replace(
+            launch_datetime=first.launch_datetime.replace(hour=14), payload="Second"
+        )
+        published = [_published(first), _published(second)]
+        changed = [first, second._replace(payload_mass=None)]
+        with self.assertRaisesRegex(PublishedLaunchesLostError, "1 .* lost their mass"):
+            check_published_launches(changed, published)
+        check_published_launches(
+            changed, [_published(first, mass=None), _published(second)]
+        )
+
     def test_a_mass_that_was_already_unknown_may_stay_unknown(self):
         published = [_published(self.records[0], mass=None), *self.published[1:]]
         unknown = self.records[0]._replace(payload_mass=None)
@@ -145,8 +251,22 @@ class TestCheckPublishedLaunches(unittest.TestCase):
         self.assertIn("30 published launches are missing", str(ctx.exception))
         self.assertIn("; ...", str(ctx.exception))
 
+    def test_long_mass_loss_lists_are_truncated(self):
+        missing_masses = [r._replace(payload_mass=None) for r in self.records]
+        with self.assertRaises(PublishedLaunchesLostError) as ctx:
+            check_published_launches(missing_masses, self.published)
+        message = str(ctx.exception)
+        self.assertIn("30 published launches lost their mass", message)
+        self.assertIn("2025-01-05", message)
+        self.assertNotIn("2025-01-06", message)
+        self.assertIn("; ...", message)
+
 
 class TestCheckRecentLaunch(unittest.TestCase):
+    def test_no_records_raises_a_data_error(self):
+        with self.assertRaisesRegex(NoRecentLaunchesError, "no launches found"):
+            check_recent_launch(iter(()), TODAY)
+
     def test_launch_within_the_limit_passes(self):
         check_recent_launch([_launch(2026, 9, 3)], TODAY)  # 30 days before TODAY
 

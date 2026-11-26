@@ -11,10 +11,12 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-import matplotlib.pyplot
+import matplotlib.pyplot as plt
+import requests
 
 from spacex_graphs import cache, cli, output, plotting, validation
 from spacex_graphs.config import WIKIPEDIA_PAGES
+from spacex_graphs.errors import ImplausibleMassError, OutcomeIntegrityError
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.validation import PublishedLaunch
 
@@ -48,6 +50,29 @@ class TestCodeVersion(unittest.TestCase):
         baseline = cli.code_version()
         with mock.patch("spacex_graphs.cli.metadata.version", return_value="99.0"):
             self.assertNotEqual(cli.code_version(), baseline)
+
+    def test_fingerprints_nested_package_sources_and_transitive_rendering_libraries(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            cli_file = root / "cli.py"
+            cli_file.touch()
+            with (
+                mock.patch.object(cli, "__file__", str(cli_file)),
+                mock.patch(
+                    "spacex_graphs.cli.metadata.version", return_value="1"
+                ) as version,
+            ):
+                before = cli.code_version()
+                for library in ("fonttools", "kiwisolver", "pillow", "soupsieve"):
+                    version.assert_any_call(library)
+                nested = root / "nested"
+                nested.mkdir()
+                (nested / "example.py").write_text(
+                    "# new rendering code", encoding="utf-8"
+                )
+                self.assertNotEqual(cli.code_version(), before)
 
 
 class TestFetchAndParse(unittest.TestCase):
@@ -156,6 +181,49 @@ class TestLoadLaunchRecords(unittest.TestCase):
         self.assertNotIn(planned, records)
         self.assertIn("after today", logs.output[0])
 
+    def test_scrubbed_same_day_duplicate_cannot_displace_actual_launch(self):
+        launched = _launch(2026, 10, 3, payload="Actual")
+        scrubbed = launched._replace(outcome="Scrubbed", payload="Cancelled")
+        with self.assertLogs(cli.logger, "WARNING") as logs:
+            records = self._load(self._pages([*EVERY_YEAR, scrubbed, launched]))
+        self.assertIn(launched, records)
+        self.assertNotIn(scrubbed, records)
+        self.assertIn("have not taken place", logs.output[0])
+
+    def test_integrity_checks_run_before_publishing(self):
+        huge = EVERY_YEAR[-1]._replace(payload_mass=100_000)
+        with self.assertRaises(ImplausibleMassError):
+            self._load(self._pages([*EVERY_YEAR[:-1], huge]))
+        with self.assertRaises(OutcomeIntegrityError):
+            self._load(
+                self._pages([r._replace(outcome="Cape Canaveral") for r in EVERY_YEAR])
+            )
+
+
+class TestMain(unittest.TestCase):
+    def test_output_quiet_and_step_summary_are_forwarded(self):
+        with (
+            mock.patch.object(cli, "run") as run,
+            mock.patch.object(cli, "_configure_logging") as configure,
+            mock.patch("sys.argv", ["graphs.py", "--output", "-q"]),
+            mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": "/tmp/summary.md"}),
+        ):
+            cli.main()
+        run.assert_called_once_with(True, summary_path="/tmp/summary.md")
+        configure.assert_called_once_with(True)
+
+    def test_display_is_allowed_with_an_interactive_backend(self):
+        with (
+            mock.patch.object(cli, "run") as run,
+            mock.patch.object(cli, "_configure_logging") as configure,
+            mock.patch.object(plt, "get_backend", return_value="TkAgg"),
+            mock.patch("sys.argv", ["graphs.py"]),
+            mock.patch.dict(os.environ, {}, clear=True),
+        ):
+            cli.main()
+        run.assert_called_once_with(False, summary_path=None)
+        configure.assert_called_once_with(False)
+
     def test_main_exits_nonzero_on_empty_page(self):
         with (
             mock.patch.object(
@@ -198,7 +266,28 @@ class TestLoadLaunchRecords(unittest.TestCase):
         ):
             cli.main()
         self.assertEqual(ctx.exception.code, 1)
-        self.assertIn("could not write the outputs or cache: denied", logs.output[0])
+        self.assertIn("file system error: denied", logs.output[0])
+
+    def test_failures_are_fenced_in_the_step_summary(self):
+        message = "invalid value\n~~~\n# not a heading <img>"
+        for error in (validation.EmptyPageError(message), OSError(message)):
+            with (
+                self.subTest(error=type(error).__name__),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                summary = pathlib.Path(tmp) / "summary.md"
+                with (
+                    mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}),
+                    mock.patch.object(cli, "run", side_effect=error),
+                    mock.patch.object(cli, "_configure_logging"),
+                    mock.patch("sys.argv", ["graphs.py", "--output"]),
+                    self.assertLogs(cli.logger, "ERROR"),
+                    self.assertRaises(SystemExit),
+                ):
+                    cli.main()
+                contents = summary.read_text(encoding="utf-8")
+                self.assertIn(f"{message}\n~~~~\n", contents)
+                self.assertTrue(contents.startswith("**Failed**\n\n~~~~\n"))
 
     def test_display_without_a_display_is_a_usage_error(self):
         # Tests run with the file-only Agg backend, like a container or CI
@@ -225,7 +314,7 @@ OUTPUT_FILES = [
 
 
 class TestRun(unittest.TestCase):
-    """Runs the whole pipeline with only the network fetch mocked out."""
+    """Exercises graph and CSV generation from known launch records."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -239,7 +328,7 @@ class TestRun(unittest.TestCase):
             )
         )
         self.show = self.enterContext(mock.patch("spacex_graphs.cli.plt.show"))
-        self.addCleanup(matplotlib.pyplot.close, "all")
+        self.addCleanup(plt.close, "all")
 
     def _run(self, save_output=True):
         cli.run(
@@ -250,7 +339,7 @@ class TestRun(unittest.TestCase):
         )
 
     def _changed(self):
-        return cache.has_data_changed(
+        return output.has_data_changed(
             self.records,
             TODAY,
             cache_dir=self.cache_dir,
@@ -263,10 +352,12 @@ class TestRun(unittest.TestCase):
         return sorted(os.listdir(self.output_dir))
 
     def test_first_save_writes_all_outputs(self):
+        existing_figures = plt.get_fignums()
         self._run()
         self.assertEqual(self._outputs(), OUTPUT_FILES)
         self.assertFalse(self._changed())
         self.show.assert_not_called()
+        self.assertEqual(plt.get_fignums(), existing_figures)
 
     def test_unchanged_rerun_skips_regeneration(self):
         self._run()
@@ -303,8 +394,10 @@ class TestRun(unittest.TestCase):
         self._run(save_output=False)
         self.show.assert_called_once()
         self.assertEqual(self._outputs(), [])
+        self.assertFalse(os.path.exists(self.output_dir))
 
     def test_failed_save_is_retried_rather_than_skipped(self):
+        existing_figures = plt.get_fignums()
         with (
             mock.patch.object(output, "save_launches_csv", side_effect=OSError),
             self.assertRaises(OSError),
@@ -312,6 +405,75 @@ class TestRun(unittest.TestCase):
             self._run()
         # The hash wasn't recorded, so the next run regenerates
         self.assertTrue(self._changed())
+        self.assertEqual(plt.get_fignums(), existing_figures)
+
+    def test_utc_now_is_computed_once_when_today_is_omitted(self):
+        utc_noon = datetime.datetime.combine(TODAY, datetime.time(12), datetime.UTC)
+        with (
+            mock.patch.object(cli, "datetime", wraps=datetime) as clock,
+            mock.patch.object(
+                cli, "load_launch_records", return_value=self.records
+            ) as load,
+        ):
+            clock.datetime.now.return_value = utc_noon
+            clock.UTC = datetime.UTC
+            cli.run(False, output_dir=self.output_dir, cache_dir=self.cache_dir)
+        clock.datetime.now.assert_called_once_with(datetime.UTC)
+        load.assert_called_once_with(
+            TODAY, output_dir=self.output_dir, cache_dir=self.cache_dir
+        )
+
+
+class TestFixtureRoundTrip(unittest.TestCase):
+    def test_real_html_fixtures_run_through_cache_to_published_baseline(self):
+        falcon, starship = WIKIPEDIA_PAGES[-2:]
+        fixtures = pathlib.Path(__file__).parent / "fixtures"
+        html = {
+            falcon.url: (fixtures / "falcon_launches.html").read_bytes(),
+            starship.url: (fixtures / "starship_launches.html").read_bytes(),
+        }
+
+        def get(url, *, headers, **kwargs):
+            response = mock.MagicMock(spec=requests.Response)
+            response.__enter__.return_value = response
+            response.status_code = 304 if "If-None-Match" in headers else 200
+            response.headers = {"ETag": '"fixture"'}
+            response.iter_content.return_value = [html[url]]
+            return response
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(cli, "WIKIPEDIA_PAGES", (falcon, starship)),
+            mock.patch.object(validation, "FIRST_CONTINUOUS_YEAR", 2024),
+            mock.patch.object(requests.Session, "get", side_effect=get),
+        ):
+            cache_dir, output_dir = (
+                os.path.join(tmp, name) for name in ("cache", "out")
+            )
+            today = datetime.date(2025, 1, 13)
+            cli.run(True, today, cache_dir=cache_dir, output_dir=output_dir)
+            baseline = output.published_launches(output_dir)
+            self.assertEqual(len(baseline), 10)
+            self.assertIn(
+                PublishedLaunch(
+                    datetime.date(2024, 11, 19),
+                    "Block 1 Starship",
+                    "Plush banana",
+                    None,
+                ),
+                baseline,
+            )
+            self.assertIn(
+                PublishedLaunch(
+                    datetime.date(2025, 1, 4), "Falcon 9", "Thuraya 4-NGS", 5000
+                ),
+                baseline,
+            )
+            self.assertEqual(output.missing_outputs(output_dir), [])
+            with mock.patch.object(output, "save_plots") as save:
+                cli.run(True, today, cache_dir=cache_dir, output_dir=output_dir)
+            save.assert_not_called()
+            self.assertEqual(output.published_launches(output_dir), baseline)
 
 
 class TestRunWiring(unittest.TestCase):
@@ -336,7 +498,6 @@ class TestRunWiring(unittest.TestCase):
             ) as cumulative,
         ):
             cli.run(True, TODAY, output_dir=tmp, cache_dir=tmp)
-        matplotlib.pyplot.close("all")
         self.assertEqual(by_year.call_args.kwargs["current_year"], 2026)
         caption = by_year.call_args.kwargs["caption"]
         self.assertIn("through 30 September 2026", caption)
@@ -355,10 +516,8 @@ class TestJobSummary(unittest.TestCase):
             ),
         ):
             summary = os.path.join(tmp, "summary.md")
-            with mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": summary}):
-                cli.run(True, TODAY, output_dir=tmp, cache_dir=tmp)
-                cli.run(True, TODAY, output_dir=tmp, cache_dir=tmp)
-            matplotlib.pyplot.close("all")
+            cli.run(True, TODAY, output_dir=tmp, cache_dir=tmp, summary_path=summary)
+            cli.run(True, TODAY, output_dir=tmp, cache_dir=tmp, summary_path=summary)
             with open(summary, encoding="utf-8") as f:
                 text = f.read()
         self.assertIn("Parsed 1 launches; the latest is from 2026-09-30.", text)
@@ -366,8 +525,9 @@ class TestJobSummary(unittest.TestCase):
         self.assertIn("Nothing changed since the last run", text)
 
     def test_no_summary_outside_github_actions(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            cli._summarize("ignored")  # must not raise or write anywhere
+        with mock.patch("builtins.open") as open_file:
+            cli._summarize(None, "ignored")
+        open_file.assert_not_called()
 
 
 class TestConfigureLogging(unittest.TestCase):
@@ -402,6 +562,12 @@ class TestConfigureLogging(unittest.TestCase):
         error = logging.LogRecord("x", logging.ERROR, "", 0, "ERROR: bad", None, None)
         self.assertEqual(problems.format(warning), "::warning::! cached")
         self.assertEqual(problems.format(error), "::error::ERROR: bad")
+        injected = logging.LogRecord(
+            "x", logging.ERROR, "", 0, "50%\r\n::notice::sneaky\n", None, None
+        )
+        self.assertEqual(
+            problems.format(injected), "::error::50%25%0D%0A::notice::sneaky%0A"
+        )
 
     def test_quiet_shows_only_warnings_and_errors(self):
         import logging

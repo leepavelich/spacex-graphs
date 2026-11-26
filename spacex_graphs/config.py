@@ -1,7 +1,9 @@
 """Static configuration: data sources, HTTP settings, paths, and orbit categories."""
 
 import datetime
-from typing import Literal, NamedTuple
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Final, Literal, NamedTuple
 
 # Default directories, relative to the current directory; cli.run passes them
 # down, so nothing else reads these
@@ -9,12 +11,14 @@ OUTPUT_DIR = "outputs"
 CACHE_DIR = ".cache"
 
 REQUEST_TIMEOUT = 10
+MAX_FETCH_WORKERS = 5
+MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 # Wikimedia's User-Agent policy asks automated clients to identify themselves
 # with a way to get in touch, and may block generic or spoofed browser UAs:
 # https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy
-HEADERS = {
-    "User-Agent": "spacex-graphs/1.0 (https://github.com/leepavelich/spacex-graphs)"
-}
+HEADERS = MappingProxyType(
+    {"User-Agent": "spacex-graphs/1.0 (https://github.com/leepavelich/spacex-graphs)"}
+)
 
 # Launch tables come in one of these layouts, each with its own row parser
 TableLayout = Literal["falcon", "starship"]
@@ -59,6 +63,16 @@ FIRST_CONTINUOUS_YEAR = 2012
 # this long, raise the limit until launches resume.
 MAX_DAYS_SINCE_LAUNCH = 30
 
+# Generous upper bounds (kg) to catch unit errors rather than enforce rated
+# capacity. A Starship block variant has the same ceiling as Starship.
+MAX_PAYLOAD_MASS_KG = MappingProxyType(
+    {"Falcon 1": 2_000, "Falcon 9": 30_000, "Falcon Heavy": 75_000, "Starship": 300_000}
+)
+DEFAULT_MAX_PAYLOAD_MASS_KG = MAX_PAYLOAD_MASS_KG["Starship"]
+
+# Tolerate a handful of unfamiliar outcomes, but catch a swapped column.
+MAX_UNRECOGNIZED_OUTCOME_FRACTION = 0.05
+
 # The cumulative graph only shows years from this one onwards
 MIN_CUMULATIVE_YEAR = 2017
 
@@ -69,12 +83,19 @@ HIGHLIGHT_FROM_YEAR = 2020
 # The orbit categories the graphs show, in legend order. Every category
 # produced by ORBIT_MAPPING or transform's fallbacks must be one of these, and
 # plotting must give each a color; the tests check both.
-LEO_STARLINK = "LEO (Starlink)"
-LEO_OTHER = "LEO (Other)"
-OTHER_ORBIT = "Other"
-ORBIT_CATEGORIES = (
-    LEO_STARLINK,
-    LEO_OTHER,
+LEO_STARLINK: Final = "LEO (Starlink)"
+LEO_OTHER: Final = "LEO (Other)"
+SSO_STARLINK: Final = "SSO (Starlink)"
+SSO_OTHER: Final = "SSO (Other)"
+MEO: Final = "MEO"
+GTO_GEO: Final = "GTO/GEO"
+BLT: Final = "BLT"
+HELIOCENTRIC: Final = "Heliocentric"
+TRANSATMOSPHERIC: Final = "Transatmospheric"
+OTHER_ORBIT: Final = "Other"
+OrbitCategory = Literal[
+    "LEO (Starlink)",
+    "LEO (Other)",
     "SSO (Starlink)",
     "SSO (Other)",
     "MEO",
@@ -82,40 +103,54 @@ ORBIT_CATEGORIES = (
     "BLT",
     "Heliocentric",
     "Transatmospheric",
+    "Other",
+]
+ORBIT_CATEGORIES: tuple[str, ...] = (
+    LEO_STARLINK,
+    LEO_OTHER,
+    SSO_STARLINK,
+    SSO_OTHER,
+    MEO,
+    GTO_GEO,
+    BLT,
+    HELIOCENTRIC,
+    TRANSATMOSPHERIC,
     OTHER_ORBIT,
 )
 
 # Maps raw Wikipedia orbit descriptions to the categories above. Footnote
 # markers like "[338]" are removed before lookup, so keys never include them.
-ORBIT_MAPPING = {
-    "Ballistic lunar transfer (BLT)": "BLT",
-    "BLT": "BLT",
-    "GEO": "GTO/GEO",
-    "GTO": "GTO/GEO",
-    "HEO for P/2 orbit": "Other",
-    "Heliocentric": "Heliocentric",
-    "Heliocentric 0.99–1.67 AU (close to Mars transfer orbit)": "Heliocentric",
-    "LEO": "LEO (Other)",
-    "LEO (ISS)": "LEO (Other)",
-    "LEO (Starlink)": "LEO (Starlink)",
-    "LEO / MEO": "Other",
-    "MEO": "MEO",
-    "Polar LEO": "LEO (Other)",
-    "Polar orbit LEO": "LEO (Other)",
-    "Polar (Retrograde)": "LEO (Other)",  # Fram2: a crewed polar LEO flight
-    "Retrograde LEO": "LEO (Other)",
-    "SSO": "SSO (Other)",
-    "SSO (Starlink)": "SSO (Starlink)",
-    "Sub-orbital": "Transatmospheric",
-    "Suborbital": "Transatmospheric",
-    "Sun–Earth L1 insertion": "Other",
-    "Sun–Earth L2 injection": "Other",
-    "Transatmospheric": "Transatmospheric",
-    "—": "Transatmospheric",  # Starship test flights often have — for orbit
-    # Starship flights that carried Starlink satellites (or simulators) on a
-    # suborbital trajectory: the payload never reached orbit, so it counts as
-    # Transatmospheric rather than as a Starlink orbit
-    "Suborbital (Starlink)": "Transatmospheric",
-    "Sub-orbital (Starlink)": "Transatmospheric",
-    "Transatmospheric (Starlink)": "Transatmospheric",
-}
+ORBIT_MAPPING: Mapping[str, OrbitCategory] = MappingProxyType(
+    {
+        "Ballistic lunar transfer (BLT)": BLT,
+        BLT: BLT,
+        "GEO": GTO_GEO,
+        "GTO": GTO_GEO,
+        "HEO for P/2 orbit": OTHER_ORBIT,
+        HELIOCENTRIC: HELIOCENTRIC,
+        "Heliocentric 0.99–1.67 AU (close to Mars transfer orbit)": HELIOCENTRIC,
+        "LEO": LEO_OTHER,
+        "LEO (ISS)": LEO_OTHER,
+        LEO_STARLINK: LEO_STARLINK,
+        "LEO / MEO": OTHER_ORBIT,
+        MEO: MEO,
+        "Polar LEO": LEO_OTHER,
+        "Polar orbit LEO": LEO_OTHER,
+        "Polar (Retrograde)": LEO_OTHER,  # Fram2: a crewed polar LEO flight
+        "Retrograde LEO": LEO_OTHER,
+        "SSO": SSO_OTHER,
+        SSO_STARLINK: SSO_STARLINK,
+        "Sub-orbital": TRANSATMOSPHERIC,
+        "Suborbital": TRANSATMOSPHERIC,
+        "Sun–Earth L1 insertion": OTHER_ORBIT,
+        "Sun–Earth L2 injection": OTHER_ORBIT,
+        TRANSATMOSPHERIC: TRANSATMOSPHERIC,
+        "—": TRANSATMOSPHERIC,  # Starship test flights often have — for orbit
+        # Starship flights that carried Starlink satellites (or simulators) on a
+        # suborbital trajectory: the payload never reached orbit, so it counts as
+        # Transatmospheric rather than as a Starlink orbit
+        "Suborbital (Starlink)": TRANSATMOSPHERIC,
+        "Sub-orbital (Starlink)": TRANSATMOSPHERIC,
+        "Transatmospheric (Starlink)": TRANSATMOSPHERIC,
+    }
+)
