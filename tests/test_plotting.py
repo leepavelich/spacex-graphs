@@ -1,28 +1,182 @@
-"""Smoke tests for the matplotlib figures (rendered with the Agg backend)."""
+"""Tests for the bar chart and the shared figure setup (rendered with the Agg backend)."""
 
 import datetime
+import itertools
+import math
 import unittest
 
 import matplotlib
 
 matplotlib.use("Agg")
 
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+import pandas as pd
 
+from spacex_graphs.config import ORBIT_CATEGORIES
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.plotting import (
     ORBIT_COLORS,
+    SECONDARY_TEXT_COLOR,
+    _format_bar_total,
     plot_payload_mass_to_orbit_by_year,
 )
 from spacex_graphs.transform import (
+    Col,
     build_dataframe,
     payload_mass_by_year_orbit,
 )
+
+# Machado, Oliveira & Fernandes (2009) full-severity simulation matrices, which
+# act on linear RGB
+CVD_SIMULATIONS = {
+    "normal": ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+    "protanopia": (
+        (0.152286, 1.052583, -0.204868),
+        (0.114503, 0.786281, 0.099216),
+        (-0.003882, -0.048116, 1.051998),
+    ),
+    "deuteranopia": (
+        (0.367322, 0.860646, -0.227968),
+        (0.280085, 0.672501, 0.047413),
+        (-0.011820, 0.042940, 0.968881),
+    ),
+    "tritanopia": (
+        (1.255528, -0.076749, -0.178779),
+        (-0.078411, 0.930809, 0.147602),
+        (0.004733, 0.691367, 0.303900),
+    ),
+}
+
+
+def _linear_rgb(color):
+    return [
+        c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+        for c in mcolors.to_rgb(color)
+    ]
+
+
+def _relative_luminance(color):
+    r, g, b = _linear_rgb(color)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_against_white(color):
+    """WCAG 2 contrast ratio between the color and white."""
+    return 1.05 / (_relative_luminance(color) + 0.05)
+
+
+def cielab(color, vision="normal"):
+    """The color as seen with the given vision, in CIELAB (D65 white)."""
+    rgb = _linear_rgb(color)
+    r, g, b = (
+        min(1.0, max(0.0, sum(m * c for m, c in zip(row, rgb, strict=True))))
+        for row in CVD_SIMULATIONS[vision]
+    )
+    x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047
+    y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b
+    z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / 1.08883
+
+    def f(t):
+        return t ** (1 / 3) if t > 216 / 24389 else (24389 / 27 * t + 16) / 116
+
+    fx, fy, fz = f(x), f(y), f(z)
+    return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
+
+
+def worst_delta_e(color_a, color_b):
+    """The smallest CIE76 ΔE between two colors across all simulated visions."""
+    return min(
+        math.dist(cielab(color_a, vision), cielab(color_b, vision))
+        for vision in CVD_SIMULATIONS
+    )
 
 
 def _record(year, orbit, payload, mass):
     when = datetime.datetime(year, 6, 1)
     return LaunchRecord(year, orbit, payload, mass, when, "Falcon 9")
+
+
+def _frame(totals_by_year):
+    """A by-year frame with each year's whole total in one category."""
+    return pd.DataFrame(
+        {
+            Col.YEAR: list(totals_by_year),
+            Col.ORBIT: ["LEO (Starlink)"] * len(totals_by_year),
+            Col.MASS: list(totals_by_year.values()),
+        }
+    )
+
+
+class TestOrbitPalette(unittest.TestCase):
+    def test_keyed_by_category_name_in_legend_order(self):
+        self.assertEqual(tuple(ORBIT_COLORS), ORBIT_CATEGORIES)
+
+    def test_is_read_only(self):
+        with self.assertRaises(TypeError):
+            ORBIT_COLORS["MEO"] = "red"  # type: ignore[index]
+
+    def test_simulation_matches_the_known_bad_pair(self):
+        # The old LEO (Starlink) and SSO (Starlink) colors were nearly
+        # identical with deuteranopia; this anchors the model to that figure
+        self.assertAlmostEqual(
+            math.dist(
+                cielab("#d2691e", "deuteranopia"), cielab("#b8860b", "deuteranopia")
+            ),
+            3.4,
+            places=1,
+        )
+
+    def test_every_color_stands_out_against_white(self):
+        # WCAG 2.1 SC 1.4.11 asks 3:1 for graphical objects
+        for category, color in ORBIT_COLORS.items():
+            with self.subTest(category=category, color=color):
+                self.assertGreaterEqual(contrast_against_white(color), 3.0)
+
+    def test_every_pair_is_distinct_with_color_vision_deficiencies(self):
+        for (a, color_a), (b, color_b) in itertools.combinations(
+            ORBIT_COLORS.items(), 2
+        ):
+            with self.subTest(a=a, b=b):
+                self.assertGreaterEqual(worst_delta_e(color_a, color_b), 15)
+
+    def test_stacked_neighbors_are_far_apart(self):
+        stack = list(ORBIT_COLORS.items())
+        for (a, color_a), (b, color_b) in itertools.pairwise(stack):
+            with self.subTest(a=a, b=b):
+                self.assertGreaterEqual(worst_delta_e(color_a, color_b), 30)
+
+
+class TestFormatBarTotal(unittest.TestCase):
+    def test_scales(self):
+        cases = {
+            0: "0",
+            500: "500",
+            950: "950",
+            999.4: "999",
+            999.6: "1.0k",
+            5_800: "5.8k",
+            9_949: "9.9k",
+            9_950: "10k",
+            91_200: "91k",
+            999_499: "999k",
+            999_500: "1.00M",
+            1_571_352: "1.57M",
+            2_190_555: "2.19M",
+            9_995_000: "10.0M",
+            12_400_000: "12.4M",
+            123_456_789: "123M",
+        }
+        for total, expected in cases.items():
+            with self.subTest(total=total):
+                self.assertEqual(_format_bar_total(total), expected)
+
+    def test_labels_stay_short(self):
+        for exponent in range(0, 10):
+            for mantissa in (1, 2.5, 4.99, 9.99):
+                total = mantissa * 10**exponent
+                with self.subTest(total=total):
+                    self.assertLessEqual(len(_format_bar_total(total)), 5)
 
 
 class TestPlotPayloadMassByYear(unittest.TestCase):
@@ -76,13 +230,18 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
         self.assertEqual(gto[0].get_y(), 1000)
 
         for container in ax.containers:
-            expected = matplotlib.colors.to_rgba(
-                ORBIT_COLORS[str(container.get_label())]
-            )
+            expected = mcolors.to_rgba(ORBIT_COLORS[str(container.get_label())])
             self.assertEqual(container[0].get_facecolor(), expected)
+            # Thin white edges separate the stacked segments
+            self.assertEqual(container[0].get_edgecolor(), mcolors.to_rgba("white"))
+            self.assertEqual(container[0].get_linewidth(), 0.35)
 
         totals = [text.get_text() for text in ax.texts]
-        self.assertEqual(totals, ["1,300", "2,000"])
+        self.assertEqual(totals, ["1.3k", "2.0k"])
+        for text in ax.texts:
+            self.assertEqual(
+                mcolors.to_hex(text.get_color()), SECONDARY_TEXT_COLOR.lower()
+            )
 
     def test_current_year_is_marked_ytd_and_caption_is_shown(self):
         df = build_dataframe(
@@ -94,12 +253,111 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
         labels = [label.get_text() for label in fig.axes[0].get_xticklabels()]
         self.assertEqual(labels, ["2025", "2026 YTD"])
         self.assertEqual([text.get_text() for text in fig.texts], ["Source: test"])
+        self.assertEqual(mcolors.to_hex(fig.texts[0].get_color()), "#595959")
 
     def test_titles_name_spacex_and_year_labels_are_angled(self):
         df = build_dataframe([_record(2025, "LEO", "Starlink A", 1000)])
         ax = plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit(df)).axes[0]
         self.assertTrue(ax.get_title().startswith("SpaceX "))
+        self.assertEqual(ax.get_ylabel(), "Payload Mass (kg)")
+        self.assertEqual(ax.get_xlabel(), "")
         self.assertEqual(ax.get_xticklabels()[0].get_rotation(), 45)
+
+    def test_gridlines_are_drawn_behind_the_bars(self):
+        df = build_dataframe([_record(2025, "LEO", "Starlink A", 1000)])
+        ax = plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit(df)).axes[0]
+        self.assertIs(ax.get_axisbelow(), True)
+        # Horizontal gridlines only: vertical ones would run through the bars
+        self.assertTrue(all(line.get_visible() for line in ax.get_ygridlines()))
+        self.assertFalse(any(line.get_visible() for line in ax.get_xgridlines()))
+
+    def test_totals_fit_their_bars_and_the_axes(self):
+        # Nineteen years, the newest above 10 million kg: narrower bars and
+        # longer totals than the charts have yet needed
+        totals = {
+            year: 12_400_000 - (2030 - year) * 600_000 for year in range(2012, 2031)
+        }
+        fig = plot_payload_mass_to_orbit_by_year(_frame(totals), current_year=2030)
+        ax = fig.axes[0]
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]
+        axes_box = ax.get_window_extent(renderer)
+        bars = list(ax.containers[0])
+        pitch = (
+            bars[1].get_window_extent(renderer).x0
+            - bars[0].get_window_extent(renderer).x0
+        )
+        self.assertEqual(len(ax.texts), len(totals))
+        for text in ax.texts:
+            box = text.get_window_extent(renderer)
+            with self.subTest(label=text.get_text()):
+                self.assertLess(box.width, 0.9 * pitch)
+                self.assertLess(box.x1, axes_box.x1)
+                # Headroom keeps the tallest total off the top border
+                self.assertLess(box.y1, axes_box.y1 - 2)
+
+    def test_tallest_bar_leaves_headroom(self):
+        ax = plot_payload_mass_to_orbit_by_year(_frame({2025: 2_190_555})).axes[0]
+        self.assertAlmostEqual(ax.get_ylim()[1], 2_190_555 * 1.08)
+
+    def test_small_totals_dont_repeat_zero_ticks(self):
+        fig = plot_payload_mass_to_orbit_by_year(_frame({2025: 3}))
+        ax = fig.axes[0]
+        fig.canvas.draw()
+        labels = [label.get_text() for label in ax.get_yticklabels()]
+        self.assertEqual(len(labels), len(set(labels)), labels)
+
+    def test_y_ticks_have_thousands_separators(self):
+        fig = plot_payload_mass_to_orbit_by_year(_frame({2025: 2_190_555}))
+        ax = fig.axes[0]
+        fig.canvas.draw()
+        labels = [label.get_text() for label in ax.get_yticklabels()]
+        self.assertIn("2,000,000", labels)
+
+    def test_legend_is_pinned_top_left(self):
+        fig = plot_payload_mass_to_orbit_by_year(_frame({2024: 100, 2025: 200}))
+        ax = fig.axes[0]
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]
+        legend = ax.get_legend()
+        assert legend is not None
+        legend_box = legend.get_window_extent(renderer)
+        axes_box = ax.get_window_extent(renderer)
+        self.assertLess(legend_box.x0 - axes_box.x0, 20)
+        self.assertLess(axes_box.y1 - legend_box.y1, 20)
+
+    def test_empty_frame_draws_an_empty_chart(self):
+        df = build_dataframe([])
+        fig = plot_payload_mass_to_orbit_by_year(
+            payload_mass_by_year_orbit(df), current_year=2026, caption="Source: test"
+        )
+        ax = fig.axes[0]
+        self.assertEqual(ax.containers, [])
+        self.assertEqual([t.get_text() for t in ax.texts], ["No launches to show"])
+        self.assertEqual([text.get_text() for text in fig.texts], ["Source: test"])
+
+
+class TestRenderIsolation(unittest.TestCase):
+    def tearDown(self):
+        plt.close("all")
+
+    def test_local_matplotlib_settings_dont_change_the_render(self):
+        df = build_dataframe([_record(2025, "LEO", "Starlink A", 1000)])
+        with plt.rc_context(
+            {
+                "font.family": "serif",
+                "figure.facecolor": "black",
+                "axes.facecolor": "black",
+                "lines.linewidth": 5,
+            }
+        ):
+            fig = plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit(df))
+            # The caller's settings are back in force afterwards
+            self.assertEqual(plt.rcParams["font.family"], ["serif"])
+        ax = fig.axes[0]
+        self.assertEqual(fig.get_facecolor(), mcolors.to_rgba("white"))
+        self.assertEqual(ax.get_facecolor(), mcolors.to_rgba("white"))
+        self.assertEqual(ax.title.get_fontfamily(), ["DejaVu Sans"])
 
 
 if __name__ == "__main__":
