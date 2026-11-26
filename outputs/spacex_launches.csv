@@ -2,7 +2,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2010-06-04,18:45:00,2010,Falcon 9,Dragon Spacecraft Qualification Unit,,LEO,LEO (Other),Success,0
 2010-12-08,15:43:00,2010,Falcon 9,SpaceX COTS Demo Flight 1 (Dragon C101),,LEO,LEO (Other),Success,0
 2012-05-22,07:44:00,2012,Falcon 9,SpaceX COTS Demo Flight 2 (Dragon C102),525,LEO (ISS),LEO (Other),Success,525
-2012-10-08,00:35:00,2012,Falcon 9,SpaceX CRS-1 (Dragon C103),4700,LEO (ISS),LEO (Other),Success,4700
+2012-10-08,00:35:00,2012,Falcon 9,SpaceX CRS-1 (Dragon C103) + Orbcomm-OG2,4872,LEO (ISS),LEO (Other),Success; Partial failure,4872
 2013-03-01,15:10:00,2013,Falcon 9,SpaceX CRS-2 (Dragon C104),4877,LEO (ISS),LEO (Other),Success,4877
 2013-09-29,16:00:00,2013,Falcon 9,CASSIOPE,500,Polar orbit LEO,LEO (Other),Success,500
 2013-12-03,22:41:00,2013,Falcon 9,SES-8,3170,GTO,GTO/GEO,Success,3170
@@ -49,7 +49,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2018-01-08,01:00:00,2018,Falcon 9,Zuma,,LEO,LEO (Other),Success,0
 2018-01-31,21:25:00,2018,Falcon 9,GovSat-1 (SES-16),4230,GTO,GTO/GEO,Success,4230
 2018-02-06,20:45:00,2018,Falcon Heavy,Elon Musk's Tesla Roadster,1250,Heliocentric 0.99–1.67 AU (close to Mars transfer orbit),Heliocentric,Success,1250
-2018-02-22,14:17:00,2018,Falcon 9,Paz,2150,SSO,SSO (Other),Success,2150
+2018-02-22,14:17:00,2018,Falcon 9,Paz + Starlink (Tintin A & B),2150,SSO,SSO (Starlink),Success,2150
 2018-03-06,05:33:00,2018,Falcon 9,Hispasat 30W-6 PODSat,6092,GTO,GTO/GEO,Success,6092
 2018-03-30,14:14:00,2018,Falcon 9,Iridium NEXT-5 (10 satellites),9600,Polar LEO,LEO (Other),Success,9600
 2018-04-02,20:30:00,2018,Falcon 9,SpaceX CRS-14 (Dragon C110.2),2647,LEO (ISS),LEO (Other),Success,2647
@@ -89,11 +89,11 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2020-04-22,19:30:00,2020,Falcon 9,Starlink: Launch 6 (60 satellites),15600,LEO,LEO (Starlink),Success,15600
 2020-05-30,19:22:00,2020,Falcon 9,Crew Dragon Demo-2 (Crew Dragon C206.1 Endeavour),12530,LEO (ISS),LEO (Other),Success,12530
 2020-06-04,01:25:00,2020,Falcon 9,Starlink: Launch 7 (60 satellites),15600,LEO,LEO (Starlink),Success,15600
-2020-06-13,09:21:00,2020,Falcon 9,Starlink: Launch 8 (58 satellites),15410,LEO,LEO (Starlink),Success,15410
+2020-06-13,09:21:00,2020,Falcon 9,"Starlink: Launch 8 (58 satellites) + SkySat-16, -17, -18",15410,LEO,LEO (Starlink),Success,15410
 2020-06-30,20:10:00,2020,Falcon 9,GPS III-03 (Matthew Henson),4311,MEO,MEO,Success,4311
 2020-07-20,21:30:00,2020,Falcon 9,ANASIS-II,5500,GTO,GTO/GEO,Success,5500
-2020-08-07,05:12:00,2020,Falcon 9,Starlink: Launch 9 (57 satellites),14932,LEO,LEO (Starlink),Success,14932
-2020-08-18,14:31:00,2020,Falcon 9,Starlink: Launch 10 (58 satellites),15440,LEO,LEO (Starlink),Success,15440
+2020-08-07,05:12:00,2020,Falcon 9,Starlink: Launch 9 (57 satellites) + SXRS-1 (BlackSky Global 7 and 8),14932,LEO,LEO (Starlink),Success,14932
+2020-08-18,14:31:00,2020,Falcon 9,"Starlink: Launch 10 (58 satellites) + SkySat-19, -20, -21",15440,LEO,LEO (Starlink),Success,15440
 2020-08-30,23:18:00,2020,Falcon 9,SAOCOM 1B GNOMES 1 Tyvak-0172,3130,SSO,SSO (Other),Success,3130
 2020-09-03,12:46:00,2020,Falcon 9,Starlink: Launch 11 (60 satellites),15600,LEO,LEO (Starlink),Success,15600
 2020-10-06,11:29:00,2020,Falcon 9,Starlink: Launch 12 (60 satellites),15600,LEO,LEO (Starlink),Success,15600
@@ -120,7 +120,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2021-04-29,03:44:00,2021,Falcon 9,Starlink: Launch 24 (60 satellites),15600,LEO,LEO (Starlink),Success,15600
 2021-05-04,19:01:00,2021,Falcon 9,Starlink: Launch 25 (60 satellites),15600,LEO,LEO (Starlink),Success,15600
 2021-05-09,06:42:00,2021,Falcon 9,Starlink: Launch 27 (60 satellites),15600,LEO,LEO (Starlink),Success,15600
-2021-05-15,22:56:00,2021,Falcon 9,Starlink: Launch 26 (52 satellites),15440,LEO,LEO (Starlink),Success,15440
+2021-05-15,22:56:00,2021,Falcon 9,Starlink: Launch 26 (52 satellites) + Capella-6 + Tyvak-0130,15440,LEO,LEO (Starlink),Success,15440
 2021-05-26,18:59:00,2021,Falcon 9,Starlink: Launch 28 (60 satellites),15600,LEO,LEO (Starlink),Success,15600
 2021-06-03,17:29:00,2021,Falcon 9,SpaceX CRS-22 (Dragon C209.1),3328,LEO (ISS),LEO (Other),Success,3328
 2021-06-06,04:26:00,2021,Falcon 9,SXM-8,7000,GTO,GTO/GEO,Success,7000
@@ -132,7 +132,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2021-11-11,02:03:00,2021,Falcon 9,Crew-3 (Crew Dragon C210.1 Endurance),13000,LEO (ISS),LEO (Other),Success,13000
 2021-11-13,12:19:00,2021,Falcon 9,Starlink: Group 4-1 (53 satellites),15635,LEO,LEO (Starlink),Success,15635
 2021-11-24,06:21:00,2021,Falcon 9,Double Asteroid Redirection Test (DART),624,Heliocentric,Heliocentric,Success,624
-2021-12-02,23:12:00,2021,Falcon 9,Starlink: Group 4-3 (48 satellites),14500,LEO,LEO (Starlink),Success,14500
+2021-12-02,23:12:00,2021,Falcon 9,Starlink: Group 4-3 (48 satellites) + SXRS-2 (BlackSky Global 12 and 13),14500,LEO,LEO (Starlink),Success,14500
 2021-12-09,06:00:00,2021,Falcon 9,Imaging X-ray Polarimetry Explorer (IXPE),325,LEO,LEO (Other),Success,325
 2021-12-18,12:41:00,2021,Falcon 9,Starlink: Group 4-4 (52 satellites),15600,LEO,LEO (Starlink),Success,15600
 2021-12-19,03:58:00,2021,Falcon 9,Türksat 5B,4500,GTO,GTO/GEO,Success,4500
@@ -170,7 +170,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2022-07-17,14:20:00,2022,Falcon 9,Starlink: Group 4-22 (53 satellites),16250,LEO,LEO (Starlink),Success,16250
 2022-07-22,17:39:00,2022,Falcon 9,Starlink: Group 3-2 (46 satellites),14100,SSO,SSO (Starlink),Success,14100
 2022-07-24,13:38:00,2022,Falcon 9,Starlink: Group 4-25 (53 satellites),16250,LEO,LEO (Starlink),Success,16250
-2022-08-04,23:08:00,2022,Falcon 9,Danuri (Korea Pathfinder Lunar Orbiter),679,BLT,BLT,Success,679
+2022-08-04,23:08:00,2022,Falcon 9,"Danuri (Korea Pathfinder Lunar Orbiter) + ""Photo in Space""",679,BLT,BLT,Success,679
 2022-08-10,02:14:00,2022,Falcon 9,Starlink: Group 4-26 (52 satellites),16000,LEO,LEO (Starlink),Success,16000
 2022-08-12,21:40:00,2022,Falcon 9,Starlink: Group 3-3 (46 satellites),14100,SSO,SSO (Starlink),Success,14100
 2022-08-19,19:21:00,2022,Falcon 9,Starlink: Group 4-27 (53 satellites),16250,LEO,LEO (Starlink),Success,16250
@@ -183,7 +183,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2022-10-05,16:00:00,2022,Falcon 9,Crew-5 (Crew Dragon C210.2 Endurance),13000,LEO (ISS),LEO (Other),Success,13000
 2022-10-05,23:10:00,2022,Falcon 9,Starlink: Group 4-29 (52 satellites),16100,LEO,LEO (Starlink),Success,16100
 2022-10-08,23:05:00,2022,Falcon 9,Galaxy 33 & 34,7350,GTO,GTO/GEO,Success,7350
-2022-10-15,05:22:00,2022,Falcon 9,Hotbird 13F,4500,GTO,GTO/GEO,Success,4500
+2022-10-15,05:22:00,2022,Falcon 9,Hotbird 13F + Adidas Al Rihla balls,4501,GTO,GTO/GEO,Success,4501
 2022-10-20,14:50:00,2022,Falcon 9,Starlink: Group 4-36 (54 satellites),16700,LEO,LEO (Starlink),Success,16700
 2022-10-28,01:14:00,2022,Falcon 9,Starlink: Group 4-31 (53 satellites),16400,LEO,LEO (Starlink),Success,16400
 2022-11-01,13:41:00,2022,Falcon Heavy,USSF-44 (Shepherd Demonstration & LDPE-2),3750,GEO,GTO/GEO,Success,3750
@@ -204,7 +204,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2023-01-18,12:24:00,2023,Falcon 9,USA-343 (GPS-III SV06),4352,MEO,MEO,Success,4352
 2023-01-19,15:43:00,2023,Falcon 9,Starlink: Group 2-4 (51 satellites),15000,LEO,LEO (Starlink),Success,15000
 2023-01-26,09:32:00,2023,Falcon 9,Starlink: Group 5-2 (56 satellites),17400,LEO,LEO (Starlink),Success,17400
-2023-01-31,16:15:00,2023,Falcon 9,Starlink: Group 2-6 (49 satellites),15200,LEO,LEO (Starlink),Success,15200
+2023-01-31,16:15:00,2023,Falcon 9,Starlink: Group 2-6 (49 satellites) + ION SCV009,15200,LEO,LEO (Starlink),Success,15200
 2023-02-02,07:58:00,2023,Falcon 9,Starlink: Group 5-3 (53 satellites),16500,LEO,LEO (Starlink),Success,16500
 2023-02-07,01:32:00,2023,Falcon 9,Amazonas Nexus,4146,GTO,GTO/GEO,Success,4146
 2023-02-12,05:10:00,2023,Falcon 9,Starlink: Group 5-4 (55 satellites),17100,LEO,LEO (Starlink),Success,17100
@@ -226,7 +226,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2023-04-20,13:33:00,2023,Block 1 Starship,Starship Test,,Transatmospheric,Transatmospheric,Failure,0
 2023-04-27,13:40:00,2023,Falcon 9,Starlink: Group 3-5 (46 satellites),14100,SSO,SSO (Starlink),Success,14100
 2023-04-28,22:12:00,2023,Falcon 9,O3b mPOWER 3 & 4,4100,MEO,MEO,Success,4100
-2023-05-01,00:26:00,2023,Falcon Heavy,ViaSat-3 Americas,6400,GEO,GTO/GEO,Success,6400
+2023-05-01,00:26:00,2023,Falcon Heavy,ViaSat-3 Americas + Aurora 4A (Arcturus) + GS-1,6722,GEO,GTO/GEO,Success,6722
 2023-05-04,07:31:00,2023,Falcon 9,Starlink: Group 5-6 (56 satellites),17400,LEO,LEO (Starlink),Success,17400
 2023-05-10,20:09:00,2023,Falcon 9,Starlink: Group 2-9 (51 satellites),15900,LEO,LEO (Starlink),Success,15900
 2023-05-14,05:03:00,2023,Falcon 9,Starlink: Group 5-9 (56 satellites),17400,LEO,LEO (Starlink),Success,17400
@@ -441,7 +441,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2025-01-10,19:11:00,2025,Falcon 9,Starlink: Group 12-12 (21 satellites),16500,LEO,LEO (Starlink),Success,16500
 2025-01-13,16:47:00,2025,Falcon 9,Starlink: Group 12-4 (21 satellites),16500,LEO,LEO (Starlink),Success,16500
 2025-01-14,19:09:00,2025,Falcon 9,Transporter-12 (131 payload smallsat rideshare),2000,SSO,SSO (Other),Success,2000
-2025-01-15,06:11:00,2025,Falcon 9,Blue Ghost Mission 1,2517,TLI,Other,Success,2517
+2025-01-15,06:11:00,2025,Falcon 9,Blue Ghost Mission 1 + Hakuto-R Mission 2,2517,TLI,Other,Success,2517
 2025-01-16,22:37:00,2025,Block 2 Starship,10 Starlink simulator satellites,20000,Transatmospheric,Transatmospheric,Failure,0
 2025-01-21,05:24:00,2025,Falcon 9,Starlink: Group 13-1 (21 satellites) + 2 Starshield satellites,15300,LEO,LEO (Starlink),Success,15300
 2025-01-21,15:45:00,2025,Falcon 9,Starlink: Group 11-8 (27 satellites),15500,LEO,LEO (Starlink),Success,15500
@@ -683,7 +683,7 @@ Date,Time (UTC),Year,Vehicle,Payload,Payload Mass (kg),Orbit,Orbit Category,Outc
 2026-06-28,16:09:00,2026,Falcon 9,Starlink: Group 17-40,13800,SSO,SSO (Starlink),Success,13800
 2026-06-29,02:25:00,2026,Falcon 9,SXM-11,7000,GTO,GTO/GEO,Success,7000
 2026-07-02,02:58:00,2026,Falcon 9,Starlink: Group 17-46,13800,SSO,SSO (Starlink),Success,13800
-2026-07-05,10:50:00,2026,Falcon 9,Starlink: Group 10-50,16675,LEO,LEO (Starlink),Success,16675
+2026-07-05,10:50:00,2026,Falcon 9,Starlink: Group 10-50 + Fabships Flight 1 (semiconductor test pods x 2),16703,LEO,LEO (Starlink),Success,16703
 2026-07-07,07:12:00,2026,Falcon 9,Transporter-17 (81 payloads smallsat rideshare),,SSO,SSO (Other),Success,0
 2026-07-09,09:25:00,2026,Falcon 9,Starlink: Group 10-42,16675,LEO,LEO (Starlink),Success,16675
 2026-07-11,03:01:00,2026,Falcon 9,Starlink: Group 17-48,13800,SSO,SSO (Starlink),Success,13800
