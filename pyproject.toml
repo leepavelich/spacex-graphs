@@ -20,6 +20,7 @@ select = [
     "I",    # import sorting
     "UP",   # modern syntax for the target Python
     "B",    # likely bugs
+    "S",    # security checks
     "SIM",  # simplifications
     "RUF",  # ruff-specific checks
 ]
@@ -32,8 +33,19 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Test modules select the Agg backend before importing pyplot
-"tests/*" = ["E402"]
+# Tests select Agg before importing pyplot and may use plain assertions.
+"tests/*" = ["E402", "S101"]
+# The legacy MD5 is a non-security cache filename. Drop when it is replaced.
+"spacex_graphs/cache.py" = ["S324"]
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*"]
+# Include the actual python -m and graphs.py processes from the smoke tests.
+patch = ["subprocess"]
+
+[tool.coverage.report]
+precision = 2
 
 [tool.mypy]
 python_version = "3.15"

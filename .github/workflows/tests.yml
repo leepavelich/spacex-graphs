@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # Audit for newly disclosed vulnerabilities each Monday.
 
 permissions:
   contents: read
@@ -31,7 +33,7 @@ jobs:
           cache-dependency-path: requirements-dev.txt
 
       - name: Install Dependencies
-        run: pip install -r requirements-dev.txt
+        run: pip install --require-hashes -r requirements-dev.txt
 
       - name: Lint
         run: ruff check --output-format=github .
@@ -42,8 +44,10 @@ jobs:
       - name: Type Check
         run: mypy
 
-      - name: Run Tests
-        run: python -m unittest discover -s tests -v
+      - name: Run Tests and Enforce Coverage
+        run: |
+          coverage run --branch -m unittest discover -s tests -v
+          coverage report --fail-under=95 --show-missing
 
       - name: Audit Dependencies for Known Vulnerabilities
         run: |
@@ -72,5 +76,11 @@ jobs:
       - name: Smoke Test
         # Confirms the installed dependencies import and the CLI starts; the
         # real run needs network access to Wikipedia, which tests don't use
-        run: docker run --rm spacex-graphs --help
+        run: |
+          docker run --rm spacex-graphs --help
+          docker run --rm --user 12345:12345 --read-only --tmpfs /tmp \
+            --cap-drop ALL --security-opt no-new-privileges:true spacex-graphs --help
+          docker run --rm --user 12345:12345 --read-only --tmpfs /tmp \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --entrypoint python3 spacex-graphs -m spacex_graphs --help
 

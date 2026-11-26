@@ -3,6 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
     volumes:
       - ./outputs:/app/outputs
       # A named volume, so the unprivileged container user owns it even on
