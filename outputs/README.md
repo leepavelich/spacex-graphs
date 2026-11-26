@@ -37,3 +37,9 @@ sum `Counted Mass (kg)`, not `Payload Mass (kg)`.
   Tintin Starlink prototypes, the table lists one shared 2,150 kg figure.
   The graphs count it once under `SSO (Starlink)` and do not split it among
   satellites. [Source launch table](https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches_(2010%E2%80%932019)#2018).
+- **Shared calendar.** The cumulative chart uses a 366-day leap-year axis.
+  Common years skip February 29 so March 1 through December 31 line up
+  date-for-date across leap and common years.
+- **SVG accessibility.** Both generated SVGs embed a `<title>` and `<desc>`
+  for screen readers and automatically switch to dark styling when
+  `prefers-color-scheme: dark` matches.

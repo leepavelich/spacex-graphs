@@ -51,9 +51,10 @@ jobs:
 
           build_and_test() {
             docker build --tag spacex-graphs .
-            run_container --network none --entrypoint python3 \
+            docker run --rm --network none --read-only --tmpfs /tmp \
+              --cap-drop ALL --security-opt no-new-privileges:true --user 12345:12345 \
               -v "$PWD/tests:/app/tests:ro" -v "$PWD/outputs:/app/outputs:ro" \
-              spacex-graphs -m unittest discover -s tests
+              --entrypoint python3 spacex-graphs -m unittest discover -s tests
           }
 
           render_graphs() {
@@ -78,26 +79,42 @@ jobs:
 
           git config user.name 'GitHub Actions'
           git config user.email 'actions@github.com'
+          needs_render=true
           for attempt in {1..5}; do
-            render_graphs
-            git add -- 'outputs/*.svg' 'outputs/*.csv'
-            if git diff --cached --quiet; then
-              exit 0
+            if [[ "$needs_render" == true ]]; then
+              render_graphs
+              git add -- 'outputs/*.svg' 'outputs/*.csv'
+              if git diff --cached --quiet; then
+                exit 0
+              fi
+
+              base=$(git rev-parse HEAD)
+              git commit -m 'chore(outputs): update graphs by scheduler'
+              needs_render=false
             fi
 
-            base=$(git rev-parse HEAD)
-            git commit -m 'chore(outputs): update graphs by scheduler'
             if git push origin "HEAD:$GITHUB_REF"; then
               exit 0
             fi
 
-            git fetch --no-tags origin "$GITHUB_REF"
+            if ! git fetch --no-tags origin "$GITHUB_REF"; then
+              if [[ "$attempt" == 5 ]]; then
+                exit 1
+              fi
+              sleep "$((attempt * 5))"
+              continue
+            fi
             tip=$(git rev-parse FETCH_HEAD)
             if git merge-base --is-ancestor HEAD "$tip"; then
               exit 0 # The server accepted the commit despite a failed response.
             fi
-            if [[ "$tip" == "$base" || "$attempt" == 5 ]]; then
+            if [[ "$attempt" == 5 ]]; then
               exit 1
+            fi
+            if [[ "$tip" == "$base" ]]; then
+              # No competing update. Retry pushing the same render.
+              sleep "$((attempt * 5))"
+              continue
             fi
 
             # Drop only this runner's unpublished render and regenerate on the
@@ -105,6 +122,7 @@ jobs:
             git reset --hard "$tip"
             rm -f .cache/data_hash.txt
             build_and_test
+            needs_render=true
           done
 
       - name: Report Failure

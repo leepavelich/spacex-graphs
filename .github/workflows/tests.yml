@@ -62,9 +62,7 @@ jobs:
       - name: Check Lock Files Match Their Sources
         # Fails when requirements*.txt no longer match requirements*.in, for
         # example after a dependency update that changed only one of them
-        run: |
-          scripts/update-locks.sh
-          git diff --exit-code -- requirements.txt requirements-dev.txt
+        run: scripts/check.sh --locks-only
 
   lint-infra:
     runs-on: ubuntu-latest
@@ -76,15 +74,27 @@ jobs:
           persist-credentials: false
 
       - name: Lint GitHub Actions Workflows
+        # actionlint v1.7.12
         run: |
-          docker run --rm -v "$PWD:/repo:ro" -w /repo \
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true -v "$PWD:/repo:ro" -w /repo \
             rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
 
       - name: Lint Dockerfile
+        # hadolint v2.15.1
         run: |
-          docker run --rm -i \
+          docker run --rm -i --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true \
             hadolint/hadolint@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d \
             < Dockerfile
+
+      - name: Lint Shell Scripts
+        # ShellCheck v0.11.0
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true -v "$PWD:/repo:ro" -w /repo \
+            koalaman/shellcheck@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
+            scripts/check.sh scripts/update-locks.sh
 
   docker:
     runs-on: ubuntu-latest
@@ -108,4 +118,11 @@ jobs:
           docker run --rm --user 12345:12345 --read-only --tmpfs /tmp \
             --cap-drop ALL --security-opt no-new-privileges:true \
             --entrypoint python3 spacex-graphs -m spacex_graphs --help
+
+      - name: Test in the Hardened Runtime Image
+        run: |
+          docker run --rm --network none --read-only --tmpfs /tmp \
+            --cap-drop ALL --security-opt no-new-privileges:true --user 12345:12345 \
+            -v "$PWD/tests:/app/tests:ro" -v "$PWD/outputs:/app/outputs:ro" \
+            --entrypoint python3 spacex-graphs -m unittest discover -s tests
 

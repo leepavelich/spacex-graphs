@@ -47,7 +47,7 @@ precision = 2
 
 [tool.mypy]
 python_version = "3.15"
-files = ["spacex_graphs", "tests"]
+files = ["spacex_graphs", "tests", "graphs.py"]
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
