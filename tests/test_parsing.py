@@ -891,7 +891,16 @@ class TestFuzz(unittest.TestCase):
     def test_parse_launch_page_never_raises(self):
         rng = random.Random(7)
         tags = (
-            *"<tr> </tr> <td> </td> <th> <table> </table> <tbody> <br> </sup>".split(),
+            "<tr>",
+            "</tr>",
+            "<td>",
+            "</td>",
+            "<th>",
+            "<table>",
+            "</table>",
+            "<tbody>",
+            "<br>",
+            "</sup>",
             '<td rowspan="3">',
             '<td colspan="2">',
             '<sup class="reference">',
