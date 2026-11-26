@@ -2,8 +2,8 @@
 
 import datetime
 import re
-from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections import Counter, defaultdict
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from enum import Enum, auto
 from typing import NamedTuple
 
@@ -12,7 +12,9 @@ from spacex_graphs.config import (
     FIRST_CONTINUOUS_YEAR,
     MAX_DAYS_SINCE_LAUNCH,
     MAX_PAYLOAD_MASS_KG,
+    MAX_PUBLISHED_MASS_DROP_FRACTION,
     MAX_UNRECOGNIZED_OUTCOME_FRACTION,
+    MIN_PUBLISHED_MASS_DROP_KG,
 )
 from spacex_graphs.errors import DataError, ImplausibleMassError, OutcomeIntegrityError
 from spacex_graphs.parsing import LaunchRecord
@@ -27,7 +29,7 @@ class MissingYearsError(DataError):
 
 
 class PublishedLaunchesLostError(DataError):
-    """Raised when launches or masses that were published have gone missing."""
+    """Raised when published launches or masses go missing or materially regress."""
 
 
 class NoRecentLaunchesError(DataError):
@@ -200,6 +202,51 @@ def _describe(launch: PublishedLaunch) -> str:
     return f"{launch.date.isoformat()} {launch.vehicle} ({launch.payload})"
 
 
+def _summarize(items: Sequence[str]) -> str:
+    return "; ".join(items[:5]) + ("; ..." if len(items) > 5 else "")
+
+
+def _pair_known_masses(
+    published: Sequence[PublishedLaunch], current: Sequence[PublishedLaunch]
+) -> Iterator[tuple[PublishedLaunch, int, int]]:
+    """Pairs known masses for launches on one date and vehicle."""
+    old_names = Counter(launch.payload for launch in published)
+    new_names = Counter(launch.payload for launch in current)
+    exact = {
+        launch.payload: launch.mass
+        for launch in current
+        if launch.mass is not None
+        and old_names[launch.payload] == new_names[launch.payload] == 1
+    }
+    matched = set()
+    remaining_old = []
+    for launch in published:
+        if (old_mass := launch.mass) is None:
+            continue
+        new_mass = exact.get(launch.payload)
+        if new_mass is None:
+            remaining_old.append((old_mass, launch))
+        else:
+            matched.add(launch.payload)
+            yield launch, old_mass, new_mass
+
+    remaining_new = [
+        launch.mass
+        for launch in current
+        if launch.mass is not None and launch.payload not in matched
+    ]
+    # With fewer candidates, the separate missing-launch/mass checks already
+    # fail. Don't attribute a drop to an arbitrarily chosen unmatched launch.
+    if len(remaining_new) < len(remaining_old):
+        return
+    # Pair largest with largest so a newly added light launch can't displace
+    # a heavier baseline launch if a payload name was also revised.
+    remaining_old.sort(key=lambda pair: pair[0], reverse=True)
+    remaining_new.sort(reverse=True)
+    for (old_mass, launch), new_mass in zip(remaining_old, remaining_new, strict=False):
+        yield launch, old_mass, new_mass
+
+
 def check_published_launches(
     records: Iterable[LaunchRecord], published: Sequence[PublishedLaunch]
 ) -> None:
@@ -209,25 +256,34 @@ def check_published_launches(
     vehicle (times are ignored, since Wikipedia refines them after launch).
     Dates aren't matched loosely: SpaceX launches nearly daily, so a launch
     "moved by a day" is indistinguishable from a lost launch next to a new
-    one. A published launch with a known mass must not have lost it. Wikipedia only adds
-    launches and masses, so any loss means part of a page stopped parsing,
-    however small: two heavy Starship flights are a few percent of a year's
-    mass. published is empty on a first run.
+    one. No known mass may be lost. Large relative and absolute drops in a
+    known mass can also indicate parser drift instead of a Wikipedia correction.
+    published is empty on a first run.
     """
-    records = list(records)
-    unmatched = Counter(
-        (record.launch_datetime.date(), record.vehicle) for record in records
-    )
-    mass_known = Counter(
-        (record.launch_datetime.date(), record.vehicle)
-        for record in records
-        if record.payload_mass is not None
-    )
+    if not published:
+        return
+
+    current: dict[tuple[datetime.date, str], list[PublishedLaunch]] = defaultdict(list)
+    unmatched: Counter[tuple[datetime.date, str]] = Counter()
+    mass_known: Counter[tuple[datetime.date, str]] = Counter()
+    for record in records:
+        date = record.launch_datetime.date()
+        key = (date, record.vehicle)
+        current[key].append(
+            PublishedLaunch(date, record.vehicle, record.payload, record.payload_mass)
+        )
+        unmatched[key] += 1
+        if record.payload_mass is not None:
+            mass_known[key] += 1
 
     missing = []
     lost_mass = []
+    published_by_day: dict[tuple[datetime.date, str], list[PublishedLaunch]] = (
+        defaultdict(list)
+    )
     for launch in published:
         key = (launch.date, launch.vehicle)
+        published_by_day[key].append(launch)
         if unmatched[key] == 0:
             missing.append(launch)
             continue
@@ -238,18 +294,31 @@ def check_published_launches(
             else:
                 mass_known[key] -= 1
 
+    drops = []
+    for key, launches in published_by_day.items():
+        for launch, old_mass, new_mass in _pair_known_masses(launches, current[key]):
+            drop = old_mass - new_mass
+            if (
+                drop >= MIN_PUBLISHED_MASS_DROP_KG
+                and drop > old_mass * MAX_PUBLISHED_MASS_DROP_FRACTION
+            ):
+                drops.append(f"{_describe(launch)}: {old_mass:,} kg -> {new_mass:,} kg")
+
     problems = []
     if missing:
         problems.append(
             f"{len(missing)} published launches are missing: "
-            + "; ".join(map(_describe, missing[:5]))
-            + ("; ..." if len(missing) > 5 else "")
+            + _summarize(list(map(_describe, missing)))
         )
     if lost_mass:
         problems.append(
             f"{len(lost_mass)} published launches lost their mass: "
-            + "; ".join(map(_describe, lost_mass[:5]))
-            + ("; ..." if len(lost_mass) > 5 else "")
+            + _summarize(list(map(_describe, lost_mass)))
+        )
+    if drops:
+        problems.append(
+            f"{len(drops)} published launches have large mass drops: "
+            + _summarize(drops)
         )
     if problems:
         raise PublishedLaunchesLostError(

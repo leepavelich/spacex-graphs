@@ -14,6 +14,7 @@ import requests
 
 from spacex_graphs import cache
 from spacex_graphs.config import HEADERS, REQUEST_TIMEOUT, STALE_CACHE_LIMIT
+from spacex_graphs.errors import DataError
 
 URL = "https://en.wikipedia.org/wiki/List_of_Starship_launches"
 NOW = datetime.datetime(2026, 10, 3, 12, tzinfo=datetime.UTC)
@@ -82,6 +83,14 @@ class TestFetchWithCache(unittest.TestCase):
         self.assertIn("no cached copy", str(ctx.exception))
         self.assertIn("check the network connection", str(ctx.exception))
 
+    def test_network_error_with_unusable_cache_names_the_problem(self):
+        self._prime(b"not usable")
+        self.get.side_effect = requests.ConnectionError()
+        with self.assertRaisesRegex(
+            cache.FetchError, "ConnectionError.*cached copy is unusable"
+        ):
+            self._fetch(lambda content: [])
+
     def test_server_error_falls_back_to_cache(self):
         self._prime()
         self.get.return_value = _response(503)
@@ -107,7 +116,13 @@ class TestFetchWithCache(unittest.TestCase):
     def test_corrupt_metadata_is_ignored(self):
         self._prime()
         meta_path, _ = cache._cache_paths(URL, self._tmp.name)
-        for bad in ("{not json", "null", '["etag"]', '{"etag": 200}'):
+        for bad in (
+            "{not json",
+            "null",
+            '["etag"]',
+            '{"etag": 200}',
+            '{"etag": "v1", "last-modified": 200}',
+        ):
             with self.subTest(bad=bad):
                 with open(meta_path, "w", encoding="utf-8") as f:
                     f.write(bad)
@@ -189,14 +204,37 @@ class TestFetchWithCache(unittest.TestCase):
         )
 
     def test_304_refreshes_the_confirmation_time(self):
-        self._prime()
-        long_ago = NOW - datetime.timedelta(days=2)
+        modified = "Wed, 01 Oct 2026 10:00:00 GMT"
+        self.get.return_value = _response(
+            200, b"fresh", {"ETag": '"v1"', "Last-Modified": modified}
+        )
+        self._fetch()
+        long_ago = NOW - STALE_CACHE_LIMIT - datetime.timedelta(seconds=1)
         self._set_verified_at(long_ago)
         self.get.return_value = _response(304)
+        self.assertEqual(self._fetch(lambda content: [content]), ([b"fresh"], True))
+        meta, _ = cache._cache_paths(URL, self._tmp.name)
+        self.assertEqual(
+            cache._read_meta(meta),
+            {
+                "url": URL,
+                "etag": '"v1"',
+                "last-modified": modified,
+                "verified_at": NOW.isoformat(),
+            },
+        )
+
+    def test_304_without_validators_uses_fallback_without_refreshing_timestamp(self):
+        self.get.return_value = _response(200, b"fresh")
         self._fetch()
-        with open(cache._cache_paths(URL, self._tmp.name)[0], encoding="utf-8") as f:
-            verified_at = datetime.datetime.fromisoformat(json.load(f)["verified_at"])
-        self.assertEqual(verified_at, NOW)
+        self.clock.return_value = NOW + datetime.timedelta(hours=1)
+        self.get.return_value = _response(304)
+        with self.assertLogs(cache.logger, "WARNING") as logs:
+            self.assertEqual(self._fetch(), (b"fresh", False))
+        self.assertIn("HTTP 304", logs.output[0])
+        self.assertEqual(self.get.call_args.kwargs["headers"], HEADERS)
+        meta, _ = cache._cache_paths(URL, self._tmp.name)
+        self.assertEqual(cache._read_meta(meta)["verified_at"], NOW.isoformat())
 
     def test_304_with_missing_or_corrupt_body_refetches_without_validators(self):
         for problem in ("missing", "empty result", "parser error"):
@@ -234,6 +272,21 @@ class TestFetchWithCache(unittest.TestCase):
         meta, _ = cache._cache_paths(URL, self._tmp.name)
         self.assertEqual(cache._read_meta(meta)["verified_at"], NOW.isoformat())
 
+    def test_second_304_after_unusable_cache_fails_without_retrying_again(self):
+        self._prime(b"unusable")
+        self.get.reset_mock()
+        self.get.side_effect = [_response(304), _response(304)]
+
+        def parse(content):
+            raise DataError("bad cached body")
+
+        with self.assertRaisesRegex(
+            cache.FetchError, r"HTTP 304.*cached copy is unusable"
+        ):
+            self._fetch(parse)
+        self.assertEqual(self.get.call_count, 2)
+        self.assertEqual(self.get.call_args_list[1].kwargs["headers"], HEADERS)
+
     def test_response_size_cap_stops_reading_before_parsing_or_caching(self):
         response = _response(200)
 
@@ -256,9 +309,26 @@ class TestFetchWithCache(unittest.TestCase):
         self.assertEqual(os.listdir(self._tmp.name), [])
 
     def test_response_size_cap_allows_exact_limit(self):
-        self.get.return_value = _response(200, b"abc")
+        response = _response(200)
+        response.iter_content.return_value = [b"a", b"bc"]
+        self.get.return_value = response
         with mock.patch.object(cache, "MAX_RESPONSE_BYTES", 3):
             self.assertEqual(self._fetch(), (b"abc", False))
+
+    def test_over_limit_response_leaves_body_and_metadata_unchanged(self):
+        self._prime(b"old")
+        self.clock.return_value = NOW + datetime.timedelta(hours=1)
+        self.get.return_value = _response(200, b"new!", {"ETag": '"v2"'})
+        with (
+            mock.patch.object(cache, "MAX_RESPONSE_BYTES", 3),
+            self.assertLogs(cache.logger, "WARNING") as logs,
+        ):
+            self.assertEqual(self._fetch(), (b"old", False))
+        self.assertIn("HTTP 200 body exceeds 3 bytes", logs.output[0])
+        meta, body = cache._cache_paths(URL, self._tmp.name)
+        self.assertEqual(cache._read_content(body), b"old")
+        self.assertEqual(cache._read_meta(meta)["etag"], '"v1"')
+        self.assertEqual(cache._read_meta(meta)["verified_at"], NOW.isoformat())
 
     def test_interrupted_stream_falls_back_to_cache(self):
         self._prime()
@@ -314,11 +384,11 @@ class TestFetchWithCache(unittest.TestCase):
         self._prime()
         now = NOW
         self.get.side_effect = requests.ConnectionError()
-        minute = datetime.timedelta(minutes=1)
+        tick = datetime.timedelta(microseconds=1)
         self._set_verified_at(now - STALE_CACHE_LIMIT)
         with self.assertLogs(cache.logger, "WARNING"):
             self._fetch()
-        self._set_verified_at(now - STALE_CACHE_LIMIT - minute)
+        self._set_verified_at(now - STALE_CACHE_LIMIT - tick)
         with self.assertRaises(cache.StaleCacheError):
             self._fetch()
 
@@ -358,6 +428,7 @@ class TestHttpRetries(unittest.TestCase):
         for responses, expected_sleeps in (
             ([(429, "2"), (503, None), (200, None)], [2, 1.0]),
             ([(502, None), (504, "3600"), (503, None)], [30]),
+            ([(500, None)], []),
         ):
             with (
                 self.subTest(responses=responses),
@@ -381,7 +452,7 @@ class TestHttpRetries(unittest.TestCase):
                                 )
                             else:
                                 with self.assertRaisesRegex(
-                                    cache.FetchError, "HTTP 503"
+                                    cache.FetchError, f"HTTP {responses[-1][0]}"
                                 ):
                                     cache.fetch_with_cache(url, cache_dir=tmp)
                         self.assertEqual(

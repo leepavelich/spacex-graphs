@@ -70,6 +70,10 @@ MAX_PAYLOAD_MASS_KG = MappingProxyType(
 )
 DEFAULT_MAX_PAYLOAD_MASS_KG = MAX_PAYLOAD_MASS_KG["Starship"]
 
+# Catch likely digit or unit regressions while allowing ordinary corrections.
+MAX_PUBLISHED_MASS_DROP_FRACTION: Final = 0.5
+MIN_PUBLISHED_MASS_DROP_KG: Final = 1_000
+
 # Tolerate a handful of unfamiliar outcomes, but catch a swapped column.
 MAX_UNRECOGNIZED_OUTCOME_FRACTION = 0.05
 
