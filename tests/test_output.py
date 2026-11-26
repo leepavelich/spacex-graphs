@@ -42,19 +42,20 @@ def _parse(content):
 
 
 # Launches in every orbit category with a dark-mode color, over enough years
-# that the cumulative chart uses every year color
+# that the cumulative chart uses all eight year colors, plus a grey older year
 _CHART_RECORDS = [
     LaunchRecord(year, orbit, payload, mass, datetime.datetime(year, 6, 1), "F9")
-    for year in range(2019, 2027)
+    for year in range(2019, 2028)
     for orbit, payload, mass in (
         ("LEO", "Starlink", 15_000 * (year - 2018)),
+        ("SSO", "Starlink polar", 2_500),
         ("GTO", "SES", 4_000),
         ("BLT", "Lander", 2_000),
         ("Suborbital", "Starship", 1_000),
         ("SSO", "Transporter", 3_000),
     )
 ]
-_TODAY = datetime.date(2026, 10, 3)
+_TODAY = datetime.date(2027, 10, 3)
 
 
 def _render_charts(directory):
@@ -85,7 +86,7 @@ def _render_charts(directory):
 
 
 _STEP = re.compile(
-    r"^(?P<tag>[a-z]+)?(?:#(?P<id>[\w.]+))?"
+    r"^(?P<tag>[a-z]+)?(?:#(?P<id>[\w.-]+))?"
     r'(?:\[(?P<attr>\w+)(?P<op>[*^])="(?P<value>[^"]*)"\])?'
     r"(?P<first>:first-child)?$"
 )
@@ -212,7 +213,7 @@ class TestAccessibleSvg(unittest.TestCase):
                 self.assertEqual(desc.get("id"), "chart-desc")
                 assert desc.text is not None
                 # The chart's summary, then its caption
-                self.assertIn("2026", desc.text)
+                self.assertIn("2027", desc.text)
                 self.assertTrue(
                     desc.text.endswith(
                         transform.chart_caption(build_dataframe(_CHART_RECORDS))
@@ -231,6 +232,15 @@ class TestAccessibleSvg(unittest.TestCase):
             root = _parse(Path(directory, "chart.svg").read_bytes())
         self.assertEqual(root[0].text, title)
         self.assertEqual(root[1].text, description)
+
+    def test_a_figure_without_axes_has_an_empty_title(self):
+        fig = Figure()
+        FigureCanvasAgg(fig)
+        with tempfile.TemporaryDirectory() as directory:
+            output.save_plots({"chart.svg": fig}, output_dir=directory)
+            root = _parse(Path(directory, "chart.svg").read_bytes())
+        self.assertIsNone(root[0].text)
+        self.assertEqual(root.get("aria-labelledby"), "chart-title")
 
     def test_without_a_description_the_title_labels_the_chart(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -258,8 +268,11 @@ class TestAccessibleSvg(unittest.TestCase):
             (tuple(selectors), declarations)
             for selectors, declarations in _dark_mode_rules()
         )
-        backgrounds = next(s for s in rules if "#figure_1 > #patch_1 > path" in s)
-        legend = next(s for s in rules if s[0].startswith("#legend_1"))
+        backgrounds = next(
+            s for s in rules if f"#{plotting.FIGURE_BACKGROUND_ID} > path" in s
+        )
+        self.assertIn(f"#{plotting.AXES_BACKGROUND_ID} > path", backgrounds)
+        legend = (f"#{plotting.LEGEND_BACKGROUND_ID} > path",)
         for name, root in self.roots.items():
             with self.subTest(name=name):
                 matched = _rule_matches(root, backgrounds)
@@ -345,10 +358,71 @@ class TestAccessibleSvg(unittest.TestCase):
                 selector = f'[style*="{prop}: {light}"]'
                 with self.subTest(light=light, prop=prop):
                     self.assertIn(([selector], f"{prop}: {dark} !important"), rules)
-        root = self.roots[output.BY_YEAR_SVG]
-        for light in ("#784b87", "#2d693c", "#964b00"):
-            with self.subTest(light=light):
-                self.assertTrue(_select(root, f'[style*="fill: {light}"]'))
+        # Each replaced color is drawn by the chart whose palette it is in, so
+        # every replacement rule is exercised by a real chart
+        orbit_colors = set(plotting.ORBIT_COLORS.values())
+        year_colors = set(plotting.YEAR_COLORS)
+        for light, dark in plotting.DARK_MODE_DATA_COLORS.items():
+            self.assertIn(light, orbit_colors | year_colors)
+            chart = (
+                output.BY_YEAR_SVG if light in orbit_colors else output.CUMULATIVE_SVG
+            )
+            root = self.roots[chart]
+            with self.subTest(light=light, chart=chart):
+                self.assertTrue(
+                    _select(root, f'[style*="fill: {light}"]')
+                    or _select(root, f'[style*="stroke: {light}"]')
+                )
+                # The dark shade appears only through the stylesheet
+                for content in self.svgs.values():
+                    body = content[content.index(b"</style>") :]
+                    self.assertNotIn(dark.encode(), body)
+
+    def test_every_year_color_is_drawn_in_the_cumulative_chart(self):
+        root = self.roots[output.CUMULATIVE_SVG]
+        for slot, color in enumerate(plotting.YEAR_COLORS):
+            with self.subTest(slot=slot, color=color):
+                self.assertTrue(_select(root, f'[style*="stroke: {color}"]'))
+        self.assertTrue(
+            _select(root, f'[style*="stroke: {plotting.OLDER_YEARS_COLOR}"]')
+        )
+
+
+class TestEmptyChartSvg(unittest.TestCase):
+    def test_dark_mode_rules_still_find_the_backgrounds_without_data(self):
+        df = build_dataframe([])
+        with tempfile.TemporaryDirectory() as directory:
+            output.save_plots(
+                {
+                    output.BY_YEAR_SVG: plotting.plot_payload_mass_to_orbit_by_year(
+                        transform.payload_mass_by_year_orbit(df)
+                    ),
+                    output.CUMULATIVE_SVG: plotting.plot_cumulative_payload_mass_to_orbit(
+                        transform.build_cumulative_frame(df, _TODAY), _TODAY
+                    ),
+                },
+                output_dir=directory,
+            )
+            roots = {
+                name: _parse(Path(directory, name).read_bytes())
+                for name in (output.BY_YEAR_SVG, output.CUMULATIVE_SVG)
+            }
+        for name, root in roots.items():
+            with self.subTest(name=name):
+                backgrounds = _rule_matches(
+                    root,
+                    [
+                        f"#{plotting.FIGURE_BACKGROUND_ID} > path",
+                        f"#{plotting.AXES_BACKGROUND_ID} > path",
+                    ],
+                )
+                self.assertEqual(len(backgrounds), 2)
+                # No data, so no legend to recolor
+                self.assertEqual(
+                    _select(root, f"#{plotting.LEGEND_BACKGROUND_ID} > path"), []
+                )
+                self.assertEqual(len(root.findall(f"{{{SVG}}}style")), 1)
+                self.assertTrue(_select(root, 'g[id^="text_"]'))
 
 
 class TestSaveLaunchesCsv(unittest.TestCase):
@@ -529,6 +603,9 @@ class TestPublishedLaunches(unittest.TestCase):
         header = b"Date,Vehicle,Payload,Payload Mass (kg)\n"
         for contents in (
             b"",
+            # A header with no launches would switch the regression checks off
+            header,
+            header + b"2025-01-01,F9,Sat,-100\n",
             b"Date,Vehicle\n2025-01-01,F9\n",
             header + b"never,F9,Sat,100\n",
             header + b"2025-01-01,F9,Sat,not a mass\n",
@@ -544,6 +621,38 @@ class TestPublishedLaunches(unittest.TestCase):
                     PublishedCsvError, "malformed published CSV"
                 ):
                     output.published_launches(directory)
+
+
+class TestFilePermissions(unittest.TestCase):
+    def test_outputs_are_readable_by_everyone_whatever_the_umask(self):
+        df = build_dataframe(
+            [LaunchRecord(2025, "LEO", "A", 900, datetime.datetime(2025, 1, 1), "F9")]
+        )
+        previous = os.umask(0o077)
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                # Replacing existing owner-only files, too
+                for name in (output.BY_YEAR_SVG, output.LAUNCHES_CSV):
+                    path = Path(directory, name)
+                    path.write_bytes(b"old")
+                    path.chmod(0o600)
+                output.save_plots({output.BY_YEAR_SVG: _figure()}, output_dir=directory)
+                output.save_launches_csv(df, output_dir=directory)
+                output.save_data_hash([], _TODAY, cache_dir=directory)
+                modes = {
+                    path.name: path.stat().st_mode & 0o777
+                    for path in Path(directory).iterdir()
+                }
+        finally:
+            os.umask(previous)
+        self.assertEqual(
+            modes,
+            {
+                output.BY_YEAR_SVG: 0o644,
+                output.LAUNCHES_CSV: 0o644,
+                "data_hash.txt": 0o644,
+            },
+        )
 
 
 class TestEscapeFormula(unittest.TestCase):

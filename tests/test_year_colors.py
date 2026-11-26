@@ -6,14 +6,17 @@ The figures render on their own Agg canvases, without pyplot.
 import datetime
 import itertools
 import unittest
+from unittest import mock
 
 import numpy as np
 from matplotlib.colors import to_hex
 from matplotlib.path import Path
 from matplotlib.text import Annotation, Text
 
+from spacex_graphs import plotting
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.plotting import (
+    MARGIN_LABEL_FROM_DAY,
     OLDER_YEARS_COLOR,
     YEAR_COLORS,
     plot_cumulative_payload_mass_to_orbit,
@@ -23,6 +26,10 @@ from spacex_graphs.transform import (
     build_dataframe,
     calendar_day,
 )
+from tests.test_plotting import contrast, worst_delta_e
+
+# A late-year date, when every highlighted year is labelled in the margin
+_LATE = datetime.date(2026, 11, 25)
 
 
 def _cumulative_figure(years, today=None):
@@ -250,8 +257,7 @@ class TestDirectLabels(unittest.TestCase):
         return [text for text in ax.texts if isinstance(text, Annotation)]
 
     def test_highlighted_years_are_labelled_with_leaders_in_their_colors(self):
-        today = datetime.date(2026, 10, 3)
-        fig = _cumulative_figure(range(2017, 2027), today=today)
+        fig = _cumulative_figure(range(2017, 2027), today=_LATE)
         ax = fig.axes[0]
         colors = {line.get_label(): to_hex(line.get_color()) for line in ax.lines}
         labels = self._labels(ax)
@@ -312,6 +318,101 @@ class TestDirectLabels(unittest.TestCase):
         for box in boxes:
             self.assertGreaterEqual(box.y0, axes_box.y0 - 1)
             self.assertLessEqual(box.y1, axes_box.y1 + 1)
+
+    def test_late_in_the_year_the_current_year_is_labelled_in_the_margin(self):
+        self.assertGreaterEqual(calendar_day(_LATE), MARGIN_LABEL_FROM_DAY)
+        fig = _cumulative_figure(range(2024, 2027), today=_LATE)
+        fig.draw_without_rendering()
+        ax = fig.axes[0]
+        labels = self._labels(ax)
+        self.assertEqual(
+            [label.get_text() for label in labels], ["2026", "2025", "2024"]
+        )
+        axes_box = ax.get_window_extent()
+        for label in labels:
+            with self.subTest(year=label.get_text()):
+                self.assertIsNotNone(label.arrow_patch)
+                self.assertGreater(_text_box(label).x0, axes_box.x1)
+
+    def test_mid_year_the_current_year_is_labelled_beside_its_dot(self):
+        today = datetime.date(2026, 6, 15)
+        self.assertLess(calendar_day(today), MARGIN_LABEL_FROM_DAY)
+        fig = _plot(_projected_records(2020, today, _starship_era), today)
+        fig.draw_without_rendering()
+        ax = fig.axes[0]
+        current, *others = self._labels(ax)
+        self.assertEqual(current.get_text(), "2026")
+        self.assertEqual(
+            [label.get_text() for label in others],
+            ["2025", "2024", "2023", "2022", "2021", "2020"],
+        )
+        # Anchored on the dot, with no leader, inside the axes
+        (dot,) = ax.collections
+        self.assertEqual(tuple(current.xy), tuple(dot.get_offsets()[0]))
+        self.assertIsNone(current.arrow_patch)
+        box = _text_box(current)
+        axes_box = ax.get_window_extent()
+        self.assertTrue(axes_box.contains(box.x0, box.y0))
+        self.assertTrue(axes_box.contains(box.x1, box.y1))
+        # Right beside the dot: within a few points of it
+        dot_x, dot_y = ax.transData.transform(current.xy)
+        points = fig.dpi / 72
+        self.assertLess(abs(box.x0 - dot_x), 8 * points)
+        self.assertLess(min(abs(box.y0 - dot_y), abs(box.y1 - dot_y)), 8 * points)
+        # Clear of every line and the legend
+        legend = ax.get_legend()
+        assert legend is not None
+        self.assertFalse(box.overlaps(legend.get_window_extent()))
+        for line in ax.lines:
+            with self.subTest(line=line.get_label()):
+                self.assertFalse(_step_path(line).intersects_bbox(box))
+        # Every other year stays in the margin
+        for label in others:
+            self.assertGreater(_text_box(label).x0, axes_box.x1)
+
+    def test_dot_label_moves_off_a_line_that_runs_past_it(self):
+        # Last year's line runs just above this year's dot, so the label
+        # can't sit up and to the right of it
+        today = datetime.date(2026, 6, 15)
+        records = [
+            LaunchRecord(2026, "LEO", "A", 1000, datetime.datetime(2026, 2, 1), "F9"),
+            LaunchRecord(2025, "LEO", "B", 1030, datetime.datetime(2025, 2, 1), "F9"),
+            LaunchRecord(2025, "LEO", "C", 5000, datetime.datetime(2025, 12, 1), "F9"),
+        ]
+        fig = _plot(records, today)
+        fig.draw_without_rendering()
+        ax = fig.axes[0]
+        current = self._labels(ax)[0]
+        self.assertEqual(current.get_text(), "2026")
+        self.assertNotEqual(tuple(current.xyann), plotting._DOT_LABEL_OFFSETS[0])
+        box = _text_box(current)
+        for line in ax.lines:
+            with self.subTest(line=line.get_label()):
+                self.assertFalse(_step_path(line).intersects_bbox(box))
+
+    def test_dot_label_keeps_its_first_place_when_nothing_is_clear(self):
+        today = datetime.date(2026, 6, 15)
+        fig = _plot(_projected_records(2020, today, _starship_era), today)
+        ax = fig.axes[0]
+        current = self._labels(ax)[0]
+        with mock.patch.object(plotting, "_DOT_LABEL_OFFSETS", ((5, 4), (5, 4000))):
+            plotting._place_beside_dot(ax, current)
+            # Not clear: the label crosses the line; the far one isn't in the axes
+        self.assertEqual(tuple(current.xyann), (5, 4))
+
+    def test_level_line_ends_put_the_newer_year_above(self):
+        today = _LATE
+        records = [
+            LaunchRecord(year, "LEO", "Sat", 5000, datetime.datetime(year, 3, 1), "F9")
+            for year in (2023, 2024, 2025, 2026)
+        ]
+        fig = _plot(records, today)
+        fig.draw_without_rendering()
+        labels = self._labels(fig.axes[0])
+        heights = {label.get_text(): _text_box(label).y0 for label in labels}
+        self.assertGreater(heights["2026"], heights["2025"])
+        self.assertGreater(heights["2025"], heights["2024"])
+        self.assertGreater(heights["2024"], heights["2023"])
 
     def test_no_labels_without_highlighted_years(self):
         ax = _cumulative_figure(range(2017, 2020)).axes[0]
@@ -397,6 +498,38 @@ class TestYearPalette(unittest.TestCase):
     def test_is_frozen(self):
         self.assertIsInstance(YEAR_COLORS, tuple)
         self.assertEqual(len(YEAR_COLORS), 8)
+        self.assertEqual(len(set(YEAR_COLORS)), 8)
+
+    def test_every_year_color_stands_out_against_white(self):
+        # WCAG 2.1 SC 1.4.11 asks 3:1 for graphical objects
+        for color in YEAR_COLORS:
+            with self.subTest(color=color):
+                self.assertGreaterEqual(contrast(color, plotting.BACKGROUND_COLOR), 3.0)
+
+    def test_every_pair_is_distinct_with_color_vision_deficiencies(self):
+        # Absolute floors, as documented next to YEAR_COLORS
+        for a, b in itertools.combinations(YEAR_COLORS, 2):
+            with self.subTest(a=a, b=b):
+                self.assertGreaterEqual(worst_delta_e(a, b), 11.5)
+
+    def test_neighboring_slots_are_far_apart(self):
+        for a, b in itertools.pairwise(YEAR_COLORS):
+            with self.subTest(a=a, b=b):
+                self.assertGreaterEqual(worst_delta_e(a, b), 40)
+
+    def test_dark_mode_shades_stand_out_against_both_dark_backgrounds(self):
+        for color in YEAR_COLORS:
+            dark = plotting.DARK_MODE_DATA_COLORS.get(color, color)
+            for background in (
+                plotting.DARK_BACKGROUND_COLOR,
+                plotting.DARK_LEGEND_COLOR,
+            ):
+                with self.subTest(color=color, background=background):
+                    self.assertGreaterEqual(contrast(dark, background), 3.0)
+
+    def test_year_colors_are_not_orbit_colors(self):
+        # The dark-mode stylesheet recolors by color, across both charts
+        self.assertFalse(set(YEAR_COLORS) & set(plotting.ORBIT_COLORS.values()))
 
 
 if __name__ == "__main__":

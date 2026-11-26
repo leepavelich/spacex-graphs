@@ -61,19 +61,26 @@ _RENDERING_LIBRARIES = (
 
 
 def code_version() -> str:
-    """Fingerprints the code and libraries that produce the outputs.
+    """Fingerprints the code, Python, and libraries that produce the outputs.
 
-    It goes into the change-detection hash, so a code change or a dependency
-    update regenerates the outputs on its next run instead of waiting for
-    the data or the date to change.
+    It goes into the change-detection hash, so a code change, a Python
+    upgrade, or a dependency update regenerates the outputs on its next run
+    instead of waiting for the data or the date to change. Every field is
+    length-prefixed, so no two different inputs hash the same bytes.
     """
     digest = hashlib.sha256()
+
+    def field(data: bytes) -> None:
+        digest.update(f"{len(data)}:".encode())
+        digest.update(data)
+
+    field("python=={}.{}.{}".format(*sys.version_info[:3]).encode())
     package = Path(__file__).parent
     for source in sorted(package.rglob("*.py")):
-        digest.update(source.relative_to(package).as_posix().encode())
-        digest.update(source.read_bytes())
+        field(source.relative_to(package).as_posix().encode())
+        field(source.read_bytes())
     for library in _RENDERING_LIBRARIES:
-        digest.update(f"{library}=={metadata.version(library)}".encode())
+        field(f"{library}=={metadata.version(library)}".encode())
     return digest.hexdigest()[:16]
 
 
@@ -264,8 +271,10 @@ def main() -> None:
         epilog=(
             f"Files are written to {OUTPUT_DIR}/ and downloaded pages cached in "
             f"{CACHE_DIR}/, both relative to the current directory. With --output, "
-            "nothing is regenerated when neither the launch data nor the date "
-            "has changed since the last successful run."
+            "nothing is regenerated when the launch data, the date, and the "
+            "code fingerprint (the package source, Python, and rendering library "
+            "versions) are all unchanged since the last successful run and "
+            "every output file still exists."
         ),
     )
     parser.add_argument(

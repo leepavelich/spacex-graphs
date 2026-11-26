@@ -7,16 +7,16 @@ from typing import Final, Literal, NamedTuple
 
 # Default directories, relative to the current directory; cli.run passes them
 # down, so nothing else reads these
-OUTPUT_DIR = "outputs"
-CACHE_DIR = ".cache"
+OUTPUT_DIR: Final = "outputs"
+CACHE_DIR: Final = ".cache"
 
-REQUEST_TIMEOUT = 10
-MAX_FETCH_WORKERS = 5
-MAX_RESPONSE_BYTES = 20 * 1024 * 1024
+REQUEST_TIMEOUT: Final = 10
+MAX_FETCH_WORKERS: Final = 5
+MAX_RESPONSE_BYTES: Final = 20 * 1024 * 1024
 # Wikimedia's User-Agent policy asks automated clients to identify themselves
 # with a way to get in touch, and may block generic or spoofed browser UAs:
 # https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy
-HEADERS = MappingProxyType(
+HEADERS: Final[Mapping[str, str]] = MappingProxyType(
     {"User-Agent": "spacex-graphs/1.0 (https://github.com/leepavelich/spacex-graphs)"}
 )
 
@@ -32,13 +32,13 @@ class Page(NamedTuple):
     layout: TableLayout
 
 
-_FALCON_LIST = (
+_FALCON_LIST: Final = (
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches"
 )
-_STARSHIP_LIST = "https://en.wikipedia.org/wiki/List_of_Starship_launches"
+_STARSHIP_LIST: Final = "https://en.wikipedia.org/wiki/List_of_Starship_launches"
 
 # The Wikipedia pages listing SpaceX launches
-WIKIPEDIA_PAGES = (
+WIKIPEDIA_PAGES: Final[tuple[Page, ...]] = (
     Page("Falcon 2010-2019", f"{_FALCON_LIST}_(2010%E2%80%932019)", "falcon"),
     Page("Falcon 2020-2022", f"{_FALCON_LIST}_(2020%E2%80%932022)", "falcon"),
     Page("Falcon 2023", f"{_FALCON_LIST}_(2023)", "falcon"),
@@ -50,39 +50,39 @@ WIKIPEDIA_PAGES = (
 # When Wikipedia can't be reached, cached pages are used only if they were last
 # confirmed current within this window. Past it the run fails instead, so a
 # blocked or broken fetch can't keep publishing frozen data as if it were new.
-STALE_CACHE_LIMIT = datetime.timedelta(days=3)
+STALE_CACHE_LIMIT: Final = datetime.timedelta(days=3)
 
 # SpaceX has launched every year since 2012 (2011 had no launches). A past year
 # with no launches means a page is missing from WIKIPEDIA_PAGES, most likely
 # because Wikipedia split last year out of the current list into its own page.
-FIRST_CONTINUOUS_YEAR = 2012
+FIRST_CONTINUOUS_YEAR: Final = 2012
 
 # The newest parsed launch must be at most this old. SpaceX hasn't gone more
 # than 18 days between launches since 2022, so a longer gap almost always
 # means new launches have stopped parsing; if SpaceX really has paused for
 # this long, raise the limit until launches resume.
-MAX_DAYS_SINCE_LAUNCH = 30
+MAX_DAYS_SINCE_LAUNCH: Final = 30
 
 # Generous upper bounds (kg) to catch unit errors rather than enforce rated
 # capacity. A Starship block variant has the same ceiling as Starship.
-MAX_PAYLOAD_MASS_KG = MappingProxyType(
+MAX_PAYLOAD_MASS_KG: Final[Mapping[str, int]] = MappingProxyType(
     {"Falcon 1": 2_000, "Falcon 9": 30_000, "Falcon Heavy": 75_000, "Starship": 300_000}
 )
-DEFAULT_MAX_PAYLOAD_MASS_KG = MAX_PAYLOAD_MASS_KG["Starship"]
+DEFAULT_MAX_PAYLOAD_MASS_KG: Final = MAX_PAYLOAD_MASS_KG["Starship"]
 
 # Catch likely digit or unit regressions while allowing ordinary corrections.
 MAX_PUBLISHED_MASS_DROP_FRACTION: Final = 0.5
 MIN_PUBLISHED_MASS_DROP_KG: Final = 1_000
 
 # Tolerate a handful of unfamiliar outcomes, but catch a swapped column.
-MAX_UNRECOGNIZED_OUTCOME_FRACTION = 0.05
+MAX_UNRECOGNIZED_OUTCOME_FRACTION: Final = 0.05
 
 # The cumulative graph only shows years from this one onwards
-MIN_CUMULATIVE_YEAR = 2017
+MIN_CUMULATIVE_YEAR: Final = 2017
 
 # Years before this are drawn in muted grey as context: their payload mass is
 # tiny next to recent years, so they shouldn't compete for attention
-HIGHLIGHT_FROM_YEAR = 2020
+HIGHLIGHT_FROM_YEAR: Final = 2020
 
 # The orbit categories the graphs show, in legend order. Every category
 # produced by ORBIT_MAPPING or transform's fallbacks must be one of these, and
@@ -109,7 +109,7 @@ OrbitCategory = Literal[
     "Transatmospheric",
     "Other",
 ]
-ORBIT_CATEGORIES: tuple[str, ...] = (
+ORBIT_CATEGORIES: Final[tuple[OrbitCategory, ...]] = (
     LEO_STARLINK,
     LEO_OTHER,
     SSO_STARLINK,
@@ -124,7 +124,7 @@ ORBIT_CATEGORIES: tuple[str, ...] = (
 
 # Maps raw Wikipedia orbit descriptions to the categories above. Footnote
 # markers like "[338]" are removed before lookup, so keys never include them.
-ORBIT_MAPPING: Mapping[str, OrbitCategory] = MappingProxyType(
+ORBIT_MAPPING: Final[Mapping[str, OrbitCategory]] = MappingProxyType(
     {
         "Ballistic lunar transfer (BLT)": BLT,
         BLT: BLT,

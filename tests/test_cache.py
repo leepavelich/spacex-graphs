@@ -392,6 +392,59 @@ class TestFetchWithCache(unittest.TestCase):
         with self.assertRaises(cache.StaleCacheError):
             self._fetch()
 
+    def test_stale_error_gives_the_age_in_days_and_hours(self):
+        self._prime()
+        self._set_verified_at(NOW - datetime.timedelta(days=4, hours=5))
+        self.get.side_effect = requests.ConnectionError()
+        with self.assertRaisesRegex(
+            cache.StaleCacheError, r"last confirmed current 4d 5h ago$"
+        ):
+            self._fetch()
+
+    def test_a_confirmation_time_in_the_future_counts_as_just_now(self):
+        # A clock that was ahead when the cache was written
+        self._prime()
+        self._set_verified_at(NOW + datetime.timedelta(days=2))
+        self.get.side_effect = requests.ConnectionError()
+        with self.assertLogs(cache.logger, "WARNING") as logs:
+            self.assertEqual(self._fetch(), (b"<html>cached</html>", False))
+        self.assertIn("last confirmed 0h ago", logs.output[0])
+
+
+class TestAtomicWriter(unittest.TestCase):
+    def test_files_get_the_mode_whatever_the_umask(self):
+        previous = os.umask(0o077)
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                default = os.path.join(directory, "default")
+                private = os.path.join(directory, "private")
+                for path, mode in ((default, None), (private, 0o600)):
+                    with (
+                        cache.atomic_writer(path)
+                        if mode is None
+                        else cache.atomic_writer(path, mode)
+                    ) as f:
+                        f.write(b"data")
+                modes = [os.stat(path).st_mode & 0o777 for path in (default, private)]
+        finally:
+            os.umask(previous)
+        self.assertEqual(cache.DEFAULT_FILE_MODE, 0o644)
+        self.assertEqual(modes, [0o644, 0o600])
+
+    def test_cached_pages_are_readable_by_everyone(self):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(requests.Session, "get") as get,
+        ):
+            get.return_value = _response(200, b"fresh", {"ETag": '"v1"'})
+            cache.fetch_with_cache(URL, cache_dir=directory)
+            modes = {
+                name: os.stat(os.path.join(directory, name)).st_mode & 0o777
+                for name in os.listdir(directory)
+            }
+        self.assertEqual(len(modes), 2)
+        self.assertEqual(set(modes.values()), {0o644})
+
 
 class TestCachePaths(unittest.TestCase):
     def test_each_page_gets_its_own_cache_files(self):

@@ -92,7 +92,6 @@ class TestParseLaunchDatetime(unittest.TestCase):
             "Mid 2026 to 2027",
             "TBD 12 2026",
             "4 juin 2010",
-            "1 May 2024 24:00",
         ):
             with self.subTest(text=text):
                 self.assertIsNone(parse_launch_datetime(text))
@@ -325,6 +324,12 @@ class TestCellText(unittest.TestCase):
     def test_mass_on_separate_lines_is_not_merged(self):
         self.assertEqual(self._record(mass="4,700<br/>172 kg").payload_mass, 172)
 
+    def test_payload_masses_on_separate_lines_are_summed(self):
+        self.assertEqual(self._record(mass="500 kg<br>300 kg").payload_mass, 800)
+        self.assertEqual(
+            self._record(mass="16,500 kg<br>(36,400 lb)").payload_mass, 16500
+        )
+
 
 _FALCON_LIST = (
     "https://en.wikipedia.org/wiki/List_of_Falcon_9_and_Falcon_Heavy_launches"
@@ -460,10 +465,34 @@ class TestParseLaunchDatetimeEdgeCases(unittest.TestCase):
             datetime.datetime(2010, 6, 4, 18, 45),
         )
 
-    def test_invalid_times_are_rejected(self):
-        for text in ("1 May 2024 24:00", "1 May 2024 12:60"):
+    def test_an_invalid_time_does_not_discard_the_date(self):
+        # A stray "24:00" is skipped for the next valid time, or midnight
+        for text, expected in (
+            ("1 May 2024 24:00", datetime.datetime(2024, 5, 1)),
+            ("1 May 2024 12:60", datetime.datetime(2024, 5, 1)),
+            ("1 May 2024 24:00 14:05", datetime.datetime(2024, 5, 1, 14, 5)),
+            ("1 May 2024 24:00 UTC (10:15 UTC)", datetime.datetime(2024, 5, 1, 10, 15)),
+            ("1 May 2024 99:99 UTC 08:30", datetime.datetime(2024, 5, 1, 8, 30)),
+        ):
             with self.subTest(text=text):
-                self.assertIsNone(parse_launch_datetime(text))
+                self.assertEqual(parse_launch_datetime(text), expected)
+
+    def test_a_utc_launch_window_gives_its_start(self):
+        for text in (
+            "1 May 2024 14:30 – 15:00 UTC",
+            "1 May 2024 14:30-15:00 UTC",
+            "1 May 2024 14:30:00 — 15:00:00 utc",
+            "1 May 2024 09:00 EST (14:30 – 15:00 UTC)",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(
+                    parse_launch_datetime(text), datetime.datetime(2024, 5, 1, 14, 30)
+                )
+        # An invalid window start falls back to the other times
+        self.assertEqual(
+            parse_launch_datetime("1 May 2024 25:00 – 15:00 UTC"),
+            datetime.datetime(2024, 5, 1, 15, 0),
+        )
 
     def test_year_must_be_exactly_four_digits(self):
         self.assertIsNone(parse_launch_datetime("1 May 20245"))
@@ -559,7 +588,55 @@ class TestParsePayloadMassEdgeCases(unittest.TestCase):
         self.assertEqual(
             parse_payload_mass_text("1,500 kg (3,300 lb) + 800 kg (1,800 lb)"), 2300
         )
-        self.assertEqual(parse_payload_mass_text("1 t + 500 kg"), 500)
+
+    def test_approximate_summed_masses(self):
+        for text in (
+            "~1,500 kg + ~800 kg",
+            "~1,500 kg (3,300 lb) + ~800 kg (1,800 lb)",
+            "≈1,500 kg + ≈800 kg",
+            "c. 1,500 kg + c. 800 kg",
+            "approx. 1,500 kg + approx. 800 kg",
+            "1,500 kg + approximately 800 kg",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(parse_payload_mass_text(text), 2300)
+
+    def test_summed_terms_each_keep_their_own_unit(self):
+        for text, expected in (
+            ("1.5 t + 500 kg", 2000),
+            ("1 t + 500 kg", 1500),
+            ("500 kg + 1.5 t", 2000),
+            ("1,000 lb + 500 kg", 954),
+            ("~1.5 t (3,300 lb) + ~500 kg", 2000),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(parse_payload_mass_text(text), expected)
+
+    def test_each_line_is_a_payloads_mass(self):
+        for text, expected in (
+            ("500 kg\n300 kg", 800),
+            ("1.5 t\n500 kg", 2000),
+            ("~500 kg\n~300 kg (660 lb)", 800),
+            ("1,100 lb\n660 lb", 798),
+            ("500 kg\n+ 300 kg", 800),
+            ("4,700\n172 kg", 172),
+            ("Unknown\n300 kg", 300),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(parse_payload_mass_text(text), expected)
+
+    def test_a_conversion_on_its_own_line_is_not_another_payload(self):
+        for text, expected in (
+            ("16,500 kg\n(36,400 lb)", 16500),
+            ("16,500 kg\n36,400 lb", 16500),
+            ("36,400 lb\n16,500 kg", 16500),
+            ("75,200 lb\n(34,100 kg)", 34100),
+            ("~16,300 kg (35,900 lb)\n(Starlink)", 16300),
+            ("6,350 kg (14,000 lb)\n+ OTV payload", 6350),
+            ("800 kg (1,800 lb)\n(main satellite) + unknown additional", 800),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(parse_payload_mass_text(text), expected)
 
     def test_multiplied_masses(self):
         for text, expected in (
@@ -910,6 +987,31 @@ class TestTableGrid(unittest.TestCase):
         (row,) = self._grid(html)
         self.assertEqual(row[0], "a")
         self.assertEqual(len(row), 1001)
+
+    def test_colspan_continues_past_a_rowspan_from_above(self):
+        # A browser never lets a later cell displace one spanning down into
+        # the row: the colspan cell's second column moves past it
+        html = (
+            "<table>"
+            '<tr><td>a</td><td rowspan="2">b</td><td>c</td></tr>'
+            '<tr><td colspan="2">d</td><td>e</td></tr>'
+            "</table>"
+        )
+        self.assertEqual(self._grid(html), [["a", "b", "c"], ["d", "b", "d", "e"]])
+
+    def test_short_row_keeps_cells_spanning_into_it_in_their_columns(self):
+        html = (
+            "<table>"
+            '<tr><td rowspan="3">a</td><td>b</td><td>c</td><td rowspan="3">z</td></tr>'
+            "<tr><td>d</td></tr>"
+            "<tr></tr>"
+            "<tr><td>f</td><td>g</td></tr>"
+            "</table>"
+        )
+        self.assertEqual(
+            self._grid(html),
+            [["a", "b", "c", "z"], ["a", "d", "", "z"], ["a", "", "", "z"], ["f", "g"]],
+        )
 
     def test_span_running_past_the_last_row_is_harmless(self):
         html = '<table><tr><td rowspan="9">a</td><td>b</td></tr></table>'

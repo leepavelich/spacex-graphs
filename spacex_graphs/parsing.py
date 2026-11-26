@@ -4,8 +4,8 @@ import copy
 import datetime
 import math
 import re
-from collections.abc import Iterator, Sequence
-from typing import NamedTuple, assert_never
+from collections.abc import Iterator, Mapping, Sequence
+from typing import Final, NamedTuple, assert_never
 
 from bs4 import BeautifulSoup, Tag
 
@@ -79,8 +79,29 @@ _RANGE_AFTER = re.compile(
     re.IGNORECASE,
 )
 _TIME = r"(?<![\d:])(\d{1,2}):(\d{2})(?!\d)"
-_UTC_TIME = re.compile(rf"{_TIME}(?::\d{{2}})?\s*UTC\b", re.IGNORECASE)
+_SECONDS = r"(?::\d{2})?"
+# A launch window marked UTC, "14:30 – 15:00 UTC", opens at its first time
+_UTC_WINDOW = re.compile(
+    rf"{_TIME}{_SECONDS}\s*[-\u2013\u2014]\s*\d{{1,2}}:\d{{2}}{_SECONDS}\s*UTC\b",
+    re.IGNORECASE,
+)
+_UTC_TIME = re.compile(rf"{_TIME}{_SECONDS}\s*UTC\b", re.IGNORECASE)
 _ANY_TIME = re.compile(_TIME)
+
+
+def _launch_time(text: str) -> datetime.time:
+    """The launch time in a date cell, or midnight if it gives none.
+
+    The start of a UTC launch window wins, then a time marked UTC, then the
+    first time. A stray token that isn't a valid time, such as "24:00", is
+    skipped rather than invalidating the cell's date.
+    """
+    for pattern in (_UTC_WINDOW, _UTC_TIME, _ANY_TIME):
+        for match in pattern.finditer(text):
+            hour, minute = int(match[1]), int(match[2])
+            if hour < 24 and minute < 60:
+                return datetime.time(hour, minute)
+    return datetime.time()
 
 
 def parse_launch_datetime(text: str) -> datetime.datetime | None:
@@ -88,8 +109,10 @@ def parse_launch_datetime(text: str) -> datetime.datetime | None:
 
     Handles "26 August 2025", "August 26, 2025", and "Sept 1, 2025", with an
     optional "H:MM" or "HH:MM" time anywhere in the cell. When several times
-    appear, one marked UTC wins ("14:30 EST (19:30 UTC)" is 19:30), otherwise
-    the first. Month names are English, whatever the process locale.
+    appear, one marked UTC wins ("14:30 EST (19:30 UTC)" is 19:30), and a UTC
+    launch window gives its start ("14:30 – 15:00 UTC" is 14:30); otherwise
+    the first valid time wins, or midnight if there is none. Month names are
+    English, whatever the process locale.
 
     Returns None if no single valid date is found, including when the cell
     looks like a date but isn't one ("Mid 2026 to 2027", "31 February 2026",
@@ -113,14 +136,11 @@ def parse_launch_datetime(text: str) -> datetime.datetime | None:
     ):
         return None
 
-    time_match = _UTC_TIME.search(text) or _ANY_TIME.search(text)
-    hour, minute = (int(part) for part in time_match.groups()) if time_match else (0, 0)
-
     try:
         date = datetime.date(int(year), _MONTHS[month_name.lower()], int(day))
-        return datetime.datetime.combine(date, datetime.time(hour, minute))
     except ValueError:
         return None
+    return datetime.datetime.combine(date, _launch_time(text))
 
 
 _DIGITS = r"\d[\d,]*(?:\.\d+)?"
@@ -132,51 +152,102 @@ _NUMBER = rf"(?<![\w.,\-]){_DIGITS}"
 # — 5,000 kg" isn't a range from 12.
 _TERM = (
     rf"(?:({_NUMBER})\s*[\u00d7xX]\s*|(?<![\w.,\-]))({_DIGITS})"
-    rf"(?:(?:\s*[-\u2013]\s*|\s+to\s+)({_DIGITS}))?"
+    rf"(?:(?:\s*[-\u2013]\s*|\s+(?i:to)\s+)({_DIGITS}))?"
 )
-# Units in order of precedence: a cell's metric figure wins over pounds. A
-# bare "t" needs a space before it and can't start a word or a "t-"/"t/"
-# compound, so "Intelsat 15T" and "20 T-class satellites" have no mass.
-_UNITS_TO_KG = (
-    (r"\s*(?:kg|kilograms?)\b", re.IGNORECASE, 1.0),
-    (r"(?i:\s*(?:metric\s+)?tonnes?\b)|\s+t(?![\w\-/])", 0, 1000.0),
-    (r"\s*lbs?\b", re.IGNORECASE, 0.45359237),
+# Each unit's pattern, its kg, and its precedence: a cell's kg figure wins
+# over tonnes, and either over pounds. A bare "t" needs a space before it and
+# can't start a word or a "t-"/"t/" compound, so "Intelsat 15T" and "20
+# T-class satellites" have no mass.
+_UNITS: Final = {
+    "kg": (r"(?i:\s*(?:kg|kilograms?)\b)", 1.0, 0),
+    "t": (r"(?i:\s*(?:metric\s+)?tonnes?\b)|\s+t(?![\w\-/])", 1000.0, 1),
+    "lb": (r"(?i:\s*lbs?\b)", 0.45359237, 2),
+}
+# A term followed by its unit, which names the group that matched
+_MASS_TERM = re.compile(
+    _TERM
+    + "(?:"
+    + "|".join(rf"(?P<{name}>{unit})" for name, (unit, _, _) in _UNITS.items())
+    + ")"
 )
 # Spaces, nbsp, or narrow nbsp grouping thousands ("16 000"), in a number not
 # glued to a word or hyphen, so "CAS500-2 500 kg" stays two numbers
 _SPACE_GROUPED = re.compile(r"(?<![\w.,\-])\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?!\d)")
-# A parenthetical conversion between summed masses: "1 kg (2 lb) + 3 kg"
-_ASIDE = r"(?:\s*\([^()]*\))?"
+# What joins two summed masses: a "+", after any parenthetical conversion of
+# the first ("1 kg (2 lb) + 3 kg") and before any approximation mark on the
+# second ("~1,500 kg + ~800 kg")
+_PLUS = re.compile(
+    r"(?:\s*\([^()]*\))?\s*\+\s*"
+    r"(?:(?:~|≈|∼|(?i:c\.|ca\.|circa\b|approx\.|approx\b|approximately\b))\s*)?"
+)
+
+
+class _Mass(NamedTuple):
+    """A sum of masses in kg, and the precedence of its best unit."""
+
+    kg: float
+    rank: int
 
 
 def _to_float(number: str) -> float:
     return float(number.replace(",", ""))
 
 
-def _term_value(count: str | None, low: str, high: str | None) -> float:
-    """A term's mass in its unit: a range's average, times any count."""
+def _term_kg(term: re.Match[str]) -> tuple[float, int]:
+    """A term's mass in kg, a range's average times any count, and its unit's rank."""
+    count, low, high = term.group(1, 2, 3)
     value = _to_float(low)
     if high is not None:
         top = _to_float(high)
         # Estimates span a narrow range: "Flight 12 – 5,000 kg" or "Group 9-3
         # kg" is a label then a mass, not a range
         value = (value + top) / 2 if value <= top <= 10 * value else top
-    return value * (_to_float(count) if count else 1)
+    if count:
+        value *= _to_float(count)
+    unit = next(name for name in _UNITS if term[name] is not None)
+    _, kg_per_unit, rank = _UNITS[unit]
+    return value * kg_per_unit, rank
 
 
-def _mass_in_unit(s: str, unit: str, flags: int) -> float | None:
-    """Returns the first mass given in a unit, summing "a kg + b kg" terms."""
-    term = re.compile(_TERM + f"(?:{unit})", flags)
-    match = term.search(s)
-    if match is None:
-        return None
-    total = _term_value(*match.groups())
-    plus = re.compile(rf"{_ASIDE}\s*\+\s*")
-    end = match.end()
-    while (joiner := plus.match(s, end)) and (more := term.match(s, joiner.end())):
-        total += _term_value(*more.groups())
-        end = more.end()
-    return total
+def _sums(line: str) -> Iterator[_Mass]:
+    """Each mass in a line, summing "a + b" terms, each in its own unit."""
+    position = 0
+    while match := _MASS_TERM.search(line, position):
+        kg, rank = _term_kg(match)
+        end = match.end()
+        while (joiner := _PLUS.match(line, end)) and (
+            more := _MASS_TERM.match(line, joiner.end())
+        ):
+            more_kg, more_rank = _term_kg(more)
+            kg += more_kg
+            rank = min(rank, more_rank)
+            end = more.end()
+        yield _Mass(kg, rank)
+        position = end
+
+
+def _line_mass(line: str) -> _Mass | None:
+    """A line's mass: its first sum in the unit of highest precedence."""
+    # One sum, never several: a later figure is a conversion of the first
+    # ("16,500 kg (36,400 lb)"), and of equally ranked sums the first wins
+    return min(_sums(line), key=lambda mass: mass.rank, default=None)
+
+
+def _lines(text: str) -> list[str]:
+    """A cell's lines, with a line that continues the one above joined to it.
+
+    A line starting with "(" is a conversion or note about the mass above
+    ("16,500 kg" then "(36,400 lb)"), and one starting with "+" continues
+    its sum, so neither is a payload's mass of its own.
+    """
+    lines: list[str] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if lines and line.startswith(("(", "+")):
+            lines[-1] += " " + line
+        elif line:
+            lines.append(line)
+    return lines
 
 
 def parse_payload_mass_text(text: str | None) -> int | None:
@@ -189,7 +260,12 @@ def parse_payload_mass_text(text: str | None) -> int | None:
     - "75,200 lb (34,100 kg)" (the kg figure wins wherever it appears)
     - "1.5 t", "1.5 tonnes", or "1.5 metric tonnes" (1,500), "12 kilograms",
       and "2,500 lb" or "2,500 lbs" (1,134)
-    - "1,500 kg + 800 kg" (2,300) and "2 × 500 kg" (1,000)
+    - "1,500 kg + 800 kg" and "~1,500 kg + ~800 kg" (2,300), "1.5 t + 500 kg"
+      (2,000: each term in its own unit), and "2 × 500 kg" (1,000)
+    - a payload's mass per line, as in "500 kg<br>300 kg" (800); a line
+      starting with "(" or "+" belongs to the line above, so "16,500 kg" over
+      "(36,400 lb)" is one mass. Lines in kg or tonnes win over lines in
+      pounds, which are then taken to be conversions.
     Footnote markers like "[12]" are removed first, so "Classified[12]" has no
     mass (None) rather than 12 kg. Only numbers attached to a unit count, so
     "Unknown (22 satellites)", "Intelsat 15T", and "20 T-class satellites"
@@ -203,12 +279,13 @@ def parse_payload_mass_text(text: str | None) -> int | None:
     s = s.replace("\u2011", "-").replace("\u2212", "-")  # nb hyphen, minus
     s = _SPACE_GROUPED.sub(lambda m: re.sub(r"\D", "", m[0]), s)
 
-    for unit, flags, kg_per_unit in _UNITS_TO_KG:
-        mass = _mass_in_unit(s, unit, flags)
-        if mass is not None:
-            kg = mass * kg_per_unit
-            return round(kg) if math.isfinite(kg) else None
-    return None
+    masses = [mass for line in _lines(s) if (mass := _line_mass(line)) is not None]
+    if not masses:
+        return None
+    # Metric lines (kg or tonnes) are summed; pound lines count only without them
+    metric = [mass.kg for mass in masses if mass.rank < _UNITS["lb"][2]]
+    kg = sum(metric) if metric else sum(mass.kg for mass in masses)
+    return round(kg) if math.isfinite(kg) else None
 
 
 _DISPLAY_NONE = re.compile(r"display\s*:\s*none", re.IGNORECASE)
@@ -237,6 +314,8 @@ def _cell_text(cell: Tag, line_separator: str = " ") -> str:
     to one space. It works on a copy, so the cell itself is left intact for
     the other rows a rowspan cell belongs to.
     """
+    # Tag.__copy__ copies the whole subtree, so decomposing the copy's
+    # descendants leaves the original cell's untouched
     cell = copy.copy(cell)
     for hidden in cell.find_all(_is_hidden):
         if not hidden.decomposed:
@@ -273,11 +352,20 @@ def _table_rows(table: Tag) -> Iterator[Tag]:
             yield from _children(child, ("tr",))
 
 
+def _fill_spanned(row: list[Tag], spans: Mapping[int, tuple[Tag, int]]) -> None:
+    """Appends the cells spanning down into the row's next slots from above."""
+    while len(row) in spans:
+        row.append(spans[len(row)][0])
+
+
 def _table_grid(table: Tag) -> list[list[Tag]]:
     """Lays out a table's cells as a grid of rows, resolving rowspan and colspan.
 
     A cell spanning several rows or columns appears in each slot it covers,
     as the same Tag, so callers can tell a shared cell from a repeated value.
+    As in a browser, a cell never displaces one spanning down from a row
+    above: its columns continue after it. A short row still holds the cells
+    spanning into it, with empty cells filling the gap before them.
     """
     grid: list[list[Tag]] = []
     # Column -> (cell, rows it still covers below the current row)
@@ -285,16 +373,18 @@ def _table_grid(table: Tag) -> list[list[Tag]]:
     for tr in _table_rows(table):
         row: list[Tag] = []
         new_spans: dict[int, tuple[Tag, int]] = {}
-        for cell in [*_children(tr, ("td", "th")), None]:
-            while len(row) in spans:  # slots taken by cells from rows above
-                row.append(spans[len(row)][0])
-            if cell is None:
-                break
+        for cell in _children(tr, ("td", "th")):
             rowspan = _span(cell, "rowspan", _MAX_ROWSPAN)
             for _ in range(_span(cell, "colspan", _MAX_COLSPAN)):
+                _fill_spanned(row, spans)
                 if rowspan > 1:
                     new_spans[len(row)] = (cell, rowspan - 1)
                 row.append(cell)
+        _fill_spanned(row, spans)
+        if spans and max(spans) >= len(row):
+            # A short row: cells spanning into it keep their own columns
+            for col in range(len(row), max(spans) + 1):
+                row.append(spans[col][0] if col in spans else Tag(name="td"))
         spans = {
             col: (cell, left - 1) for col, (cell, left) in spans.items() if left > 1
         }
@@ -356,10 +446,11 @@ def _total_mass(rows: Sequence[Sequence[Tag]], index: int) -> int | None:
     Every payload's reported mass counts, whatever that payload's own outcome:
     the launch's outcome decides, in transform, whether its mass counts.
     """
-    # "; " keeps separate lines from being read as one space-grouped number
+    # One line per line of the cell: parse_payload_mass_text reads each
+    # payload's mass on its own line, and never joins numbers across lines
     masses = [
         mass
-        for text in _distinct_cell_texts(rows, index, "; ")
+        for text in _distinct_cell_texts(rows, index, "\n")
         if (mass := parse_payload_mass_text(text)) is not None
     ]
     return sum(masses) if masses else None

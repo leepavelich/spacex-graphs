@@ -8,16 +8,19 @@ import itertools
 import math
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 import matplotlib.colors as mcolors
 import pandas as pd
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
+from matplotlib.typing import RcKeyType
 
-from spacex_graphs import plotting
+from spacex_graphs import output, plotting
 from spacex_graphs.config import ORBIT_CATEGORIES
 from spacex_graphs.parsing import LaunchRecord
 from spacex_graphs.plotting import (
@@ -29,6 +32,7 @@ from spacex_graphs.plotting import (
 from spacex_graphs.transform import (
     Col,
     YearOrbitFrame,
+    build_cumulative_frame,
     build_dataframe,
     payload_mass_by_year_orbit,
 )
@@ -161,7 +165,8 @@ class TestOrbitPalette(unittest.TestCase):
             ORBIT_COLORS.items(), 2
         ):
             with self.subTest(a=a, b=b):
-                self.assertGreaterEqual(worst_delta_e(color_a, color_b), 15)
+                # As documented next to ORBIT_COLORS
+                self.assertGreaterEqual(worst_delta_e(color_a, color_b), 17.9)
 
     def test_stacked_neighbors_are_far_apart(self):
         stack = list(ORBIT_COLORS.items())
@@ -180,12 +185,13 @@ class TestDarkPalette(unittest.TestCase):
         plotting.OLDER_YEARS_COLOR,
     )
 
-    def test_every_data_color_stands_out_against_the_dark_background(self):
-        for color in self.DATA_COLORS:
-            with self.subTest(color=color):
-                self.assertGreaterEqual(
-                    contrast(in_dark_mode(color), self.BACKGROUND), 3.0
-                )
+    BACKGROUNDS = (BACKGROUND, plotting.DARK_LEGEND_COLOR)
+
+    def test_every_data_color_stands_out_against_the_dark_backgrounds(self):
+        # The legend's swatches sit on its own, slightly lighter background
+        for color, background in itertools.product(self.DATA_COLORS, self.BACKGROUNDS):
+            with self.subTest(color=color, background=background):
+                self.assertGreaterEqual(contrast(in_dark_mode(color), background), 3.0)
 
     def test_only_data_colors_are_replaced(self):
         self.assertLessEqual(set(plotting.DARK_MODE_DATA_COLORS), set(self.DATA_COLORS))
@@ -193,7 +199,11 @@ class TestDarkPalette(unittest.TestCase):
             with self.subTest(light=light):
                 # Lowercase, as matplotlib writes colors in the SVG
                 self.assertEqual(light, mcolors.to_hex(light))
-                self.assertLess(contrast(light, self.BACKGROUND), 3.0)
+                self.assertEqual(dark, mcolors.to_hex(dark))
+                self.assertLess(
+                    min(contrast(light, background) for background in self.BACKGROUNDS),
+                    3.0,
+                )
                 self.assertNotIn(dark, self.DATA_COLORS)
 
     def test_dark_orbit_colors_stay_distinct_with_color_vision_deficiencies(self):
@@ -205,16 +215,14 @@ class TestDarkPalette(unittest.TestCase):
             with self.subTest(a=a, b=b):
                 self.assertGreaterEqual(worst_delta_e(color_a, color_b), 30)
 
-    def test_dark_year_colors_keep_their_neighbors_apart(self):
-        light = plotting.YEAR_COLORS
-        dark = [in_dark_mode(color) for color in light]
-        for (a, b), (dark_a, dark_b) in zip(
-            itertools.pairwise(light), itertools.pairwise(dark), strict=True
-        ):
+    def test_dark_year_colors_stay_distinct_with_color_vision_deficiencies(self):
+        dark = [in_dark_mode(color) for color in plotting.YEAR_COLORS]
+        for a, b in itertools.combinations(dark, 2):
             with self.subTest(a=a, b=b):
-                self.assertGreaterEqual(
-                    worst_delta_e(dark_a, dark_b), min(worst_delta_e(a, b), 13.5)
-                )
+                self.assertGreaterEqual(worst_delta_e(a, b), 11.5)
+        for a, b in itertools.pairwise(dark):
+            with self.subTest(a=a, b=b):
+                self.assertGreaterEqual(worst_delta_e(a, b), 35)
 
     def test_text_is_readable_on_the_dark_backgrounds(self):
         for background in (self.BACKGROUND, plotting.DARK_LEGEND_COLOR):
@@ -323,8 +331,9 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
         gto = ax.containers[list(ORBIT_COLORS).index("GTO/GEO")]
         self.assertEqual(gto[0].get_y(), 1000)
 
+        colors = {str(category): color for category, color in ORBIT_COLORS.items()}
         for container in ax.containers:
-            expected = mcolors.to_rgba(ORBIT_COLORS[str(container.get_label())])
+            expected = mcolors.to_rgba(colors[str(container.get_label())])
             self.assertEqual(container[0].get_facecolor(), expected)
             # Thin white edges separate the stacked segments
             self.assertEqual(container[0].get_edgecolor(), mcolors.to_rgba("white"))
@@ -420,6 +429,22 @@ class TestPlotPayloadMassByYear(unittest.TestCase):
         self.assertLess(legend_box.x0 - axes_box.x0, 20)
         self.assertLess(axes_box.y1 - legend_box.y1, 20)
 
+    def test_zero_mass_years_draw_zero_height_bars(self):
+        # Only failures and unknown masses: bars of height 0, labelled "0",
+        # on a unit axis that still starts at 0
+        df = build_dataframe(
+            [
+                _record(2025, "LEO", "Starlink A", None),
+                _record(2026, "LEO", "Lost", 5000)._replace(outcome="Failure"),
+            ]
+        )
+        ax = plot_payload_mass_to_orbit_by_year(payload_mass_by_year_orbit(df)).axes[0]
+        self.assertEqual([text.get_text() for text in ax.texts], ["0", "0"])
+        self.assertTrue(
+            all(patch.get_height() == 0 for c in ax.containers for patch in c)
+        )
+        self.assertEqual(ax.get_ylim(), (0, 1))
+
     def test_empty_frame_draws_an_empty_chart(self):
         df = build_dataframe([])
         fig = plot_payload_mass_to_orbit_by_year(
@@ -499,7 +524,63 @@ def _projected_total(year):
     )
 
 
+# Local settings that savefig and the renderers read at save time
+_SAVE_TIME_POLLUTION: dict[RcKeyType, Any] = {
+    "savefig.transparent": True,
+    "savefig.bbox": "tight",
+    "savefig.pad_inches": 1.5,
+    "savefig.facecolor": "red",
+    "savefig.edgecolor": "blue",
+    "savefig.dpi": 37,
+    "path.simplify": False,
+    "path.simplify_threshold": 1.0,
+    "path.sketch": (5, 50, 2),
+    "svg.fonttype": "none",
+    "svg.hashsalt": "local",
+    "font.family": "serif",
+    "grid.color": "red",
+    "xtick.color": "green",
+    "text.color": "blue",
+}
+
+
+def _saved_charts(directory):
+    """Builds and saves both charts, returning each SVG's bytes."""
+    today = datetime.date(2026, 10, 3)
+    df = build_dataframe(
+        [
+            _record(2025, "LEO", "Starlink A", 1000),
+            _record(2026, "GTO", "SES", 4000),
+        ]
+    )
+    figures = {
+        "by_year.svg": plot_payload_mass_to_orbit_by_year(
+            payload_mass_by_year_orbit(df), current_year=today.year, caption="Test"
+        ),
+        "cumulative.svg": plotting.plot_cumulative_payload_mass_to_orbit(
+            build_cumulative_frame(df, today), today, caption="Test"
+        ),
+    }
+    output.save_plots(figures, output_dir=directory)
+    return {name: Path(directory, name).read_bytes() for name in figures}
+
+
 class TestRenderIsolation(unittest.TestCase):
+    def test_local_settings_change_neither_building_nor_saving(self):
+        with tempfile.TemporaryDirectory() as clean_dir:
+            clean = _saved_charts(clean_dir)
+        with (
+            tempfile.TemporaryDirectory() as polluted_dir,
+            matplotlib.rc_context(_SAVE_TIME_POLLUTION),
+        ):
+            polluted = _saved_charts(polluted_dir)
+            # The caller's settings are back in force afterwards
+            self.assertIs(matplotlib.rcParams["savefig.transparent"], True)
+            self.assertEqual(matplotlib.rcParams["svg.hashsalt"], "local")
+        self.assertEqual(polluted, clean)
+        for content in clean.values():
+            self.assertNotIn(b"<text", content)  # glyphs are paths
+
     def test_local_matplotlib_settings_dont_change_the_render(self):
         df = build_dataframe([_record(2025, "LEO", "Starlink A", 1000)])
         with matplotlib.rc_context(

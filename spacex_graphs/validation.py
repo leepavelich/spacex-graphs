@@ -16,24 +16,18 @@ from spacex_graphs.config import (
     MAX_UNRECOGNIZED_OUTCOME_FRACTION,
     MIN_PUBLISHED_MASS_DROP_KG,
 )
-from spacex_graphs.errors import DataError, ImplausibleMassError, OutcomeIntegrityError
+
+# The errors live in errors.py with the other DataErrors; they are re-exported
+# here, next to the checks that raise them, for existing callers
+from spacex_graphs.errors import EmptyPageError as EmptyPageError
+from spacex_graphs.errors import ImplausibleMassError as ImplausibleMassError
+from spacex_graphs.errors import MissingYearsError as MissingYearsError
+from spacex_graphs.errors import NoRecentLaunchesError as NoRecentLaunchesError
+from spacex_graphs.errors import OutcomeIntegrityError as OutcomeIntegrityError
+from spacex_graphs.errors import (
+    PublishedLaunchesLostError as PublishedLaunchesLostError,
+)
 from spacex_graphs.parsing import LaunchRecord
-
-
-class EmptyPageError(DataError):
-    """Raised when a Wikipedia page yields no launch records."""
-
-
-class MissingYearsError(DataError):
-    """Raised when past years that should have launches have none."""
-
-
-class PublishedLaunchesLostError(DataError):
-    """Raised when published launches or masses go missing or materially regress."""
-
-
-class NoRecentLaunchesError(DataError):
-    """Raised when no launches were found or the newest one is too old."""
 
 
 class OutcomeKind(Enum):
@@ -50,14 +44,32 @@ _UNLAUNCHED = re.compile(
 )
 _SUCCESS = re.compile(r"^success(?:ful)?\b")
 _FAILURE = re.compile(
-    r"^(?:failure|failed|partial success|partial failure|precluded|unsuccessful)\b"
+    r"^(?:failure|failed|launch failure|partial success|partial failure"
+    r"|precluded|unsuccessful)\b"
 )
-_FAILED_QUALIFIER = re.compile(r"\b(?:failed|failure|partial|unsuccessful)\b")
+_FAILED_QUALIFIER = re.compile(r"\b(?:failed|failure|partial|unsuccessful|lost)\b")
 
 
 def outcome_kind(outcome: str) -> OutcomeKind:
-    """Classifies an outcome for integrity checks and the transform."""
-    outcome = " ".join(outcome.split(";", 1)[0].casefold().split())
+    """Classifies an outcome for integrity checks and the transform.
+
+    A launch whose payloads have their own outcomes is listed with them joined
+    by "; " (see parsing.parse_launch_page), and its first, primary payload's
+    outcome decides: "Success; Partial failure" (CRS-1) is a success. Text
+    after a semicolon counts as a join only if every part is an outcome
+    itself; otherwise it qualifies the outcome, so "Success; payload lost" is
+    a failure and "Success; <anything else>" is unrecognized rather than
+    silently read as a success.
+    """
+    parts = [_single_outcome_kind(part) for part in outcome.split(";")]
+    if OutcomeKind.UNRECOGNIZED not in parts[1:]:
+        return parts[0]
+    whole = _single_outcome_kind(outcome)
+    return whole if whole is OutcomeKind.FAILURE else OutcomeKind.UNRECOGNIZED
+
+
+def _single_outcome_kind(outcome: str) -> OutcomeKind:
+    outcome = " ".join(outcome.casefold().split())
     if _UNLAUNCHED.match(outcome):
         return OutcomeKind.UNLAUNCHED
     # The Crew Dragon abort test successfully delivered its test payload.
@@ -206,17 +218,53 @@ def _summarize(items: Sequence[str]) -> str:
     return "; ".join(items[:5]) + ("; ..." if len(items) > 5 else "")
 
 
+def _unique_names(
+    published: Sequence[PublishedLaunch], current: Sequence[PublishedLaunch]
+) -> set[str]:
+    """Payload names listed exactly once on both sides, which identify a launch."""
+    old_names = Counter(launch.payload for launch in published)
+    new_names = Counter(launch.payload for launch in current)
+    return {name for name, count in old_names.items() if count == new_names[name] == 1}
+
+
+def _match_launches(
+    published: Sequence[PublishedLaunch], current: Sequence[PublishedLaunch]
+) -> tuple[list[PublishedLaunch], list[PublishedLaunch]]:
+    """Finds which launches on one date and vehicle lost their mass or are missing.
+
+    Returns (lost their mass, missing). A payload named once on both sides is
+    matched by name, so one payload's mass going unknown can't be masked by
+    another's becoming known. The rest are matched by count: as many must
+    still be listed, and as many of those with a known mass must still have one.
+    """
+    unique = _unique_names(published, current)
+    by_name = {launch.payload: launch for launch in current if launch.payload in unique}
+    lost = [
+        launch
+        for launch in published
+        if launch.payload in unique
+        and launch.mass is not None
+        and by_name[launch.payload].mass is None
+    ]
+    others = [launch for launch in published if launch.payload not in unique]
+    candidates = [launch for launch in current if launch.payload not in unique]
+    found = others[: len(candidates)]
+    missing = others[len(candidates) :]
+    known = [launch for launch in found if launch.mass is not None]
+    still_known = sum(launch.mass is not None for launch in candidates)
+    lost.extend(known[still_known:])
+    return lost, missing
+
+
 def _pair_known_masses(
     published: Sequence[PublishedLaunch], current: Sequence[PublishedLaunch]
 ) -> Iterator[tuple[PublishedLaunch, int, int]]:
     """Pairs known masses for launches on one date and vehicle."""
-    old_names = Counter(launch.payload for launch in published)
-    new_names = Counter(launch.payload for launch in current)
+    unique = _unique_names(published, current)
     exact = {
         launch.payload: launch.mass
         for launch in current
-        if launch.mass is not None
-        and old_names[launch.payload] == new_names[launch.payload] == 1
+        if launch.mass is not None and launch.payload in unique
     }
     matched = set()
     remaining_old = []
@@ -256,7 +304,8 @@ def check_published_launches(
     vehicle (times are ignored, since Wikipedia refines them after launch).
     Dates aren't matched loosely: SpaceX launches nearly daily, so a launch
     "moved by a day" is indistinguishable from a lost launch next to a new
-    one. No known mass may be lost. Large relative and absolute drops in a
+    one. No known mass may be lost: a payload named once on the date is
+    matched by name, the rest by count. Large relative and absolute drops in a
     known mass can also indicate parser drift instead of a Wikipedia correction.
     published is empty on a first run.
     """
@@ -264,38 +313,25 @@ def check_published_launches(
         return
 
     current: dict[tuple[datetime.date, str], list[PublishedLaunch]] = defaultdict(list)
-    unmatched: Counter[tuple[datetime.date, str]] = Counter()
-    mass_known: Counter[tuple[datetime.date, str]] = Counter()
     for record in records:
         date = record.launch_datetime.date()
-        key = (date, record.vehicle)
-        current[key].append(
+        current[(date, record.vehicle)].append(
             PublishedLaunch(date, record.vehicle, record.payload, record.payload_mass)
         )
-        unmatched[key] += 1
-        if record.payload_mass is not None:
-            mass_known[key] += 1
 
-    missing = []
-    lost_mass = []
     published_by_day: dict[tuple[datetime.date, str], list[PublishedLaunch]] = (
         defaultdict(list)
     )
     for launch in published:
-        key = (launch.date, launch.vehicle)
-        published_by_day[key].append(launch)
-        if unmatched[key] == 0:
-            missing.append(launch)
-            continue
-        unmatched[key] -= 1
-        if launch.mass is not None:
-            if mass_known[key] == 0:
-                lost_mass.append(launch)
-            else:
-                mass_known[key] -= 1
+        published_by_day[(launch.date, launch.vehicle)].append(launch)
 
-    drops = []
+    missing: list[PublishedLaunch] = []
+    lost_mass: list[PublishedLaunch] = []
+    drops: list[str] = []
     for key, launches in published_by_day.items():
+        lost, gone = _match_launches(launches, current[key])
+        lost_mass.extend(lost)
+        missing.extend(gone)
         for launch, old_mass, new_mass in _pair_known_masses(launches, current[key]):
             drop = old_mass - new_mass
             if (
