@@ -3,7 +3,7 @@
   "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg xmlns:xlink="http://www.w3.org/1999/xlink" width="720pt" height="504pt" viewBox="0 0 720 504" xmlns="http://www.w3.org/2000/svg" version="1.1" role="img" aria-labelledby="chart-title chart-desc">
  <title id="chart-title">SpaceX Cumulative Payload Mass Launched by Year</title>
- <desc id="chart-desc">Line chart of the cumulative payload mass SpaceX launched over each year from 2017 to 2026, one line per year on a shared calendar. Year-end totals: 2025 2,190,555 kg, 2024 1,656,798 kg, 2023 1,168,570 kg. 2026 reached 1,571,380 kg by 27 November. Data: Wikipedia contributors, CC BY-SA 4.0, launches through 24 November 2026. 67 successful launches with unknown or classified payload mass count as 0 kg.</desc>
+ <desc id="chart-desc">Line chart of the cumulative payload mass SpaceX launched over each year from 2017 to 2026, one line per year on a shared calendar. Year-end totals: 2025 2,190,555 kg, 2024 1,656,798 kg, 2023 1,168,570 kg. 2026 reached 1,571,380 kg by 28 November. Data: Wikipedia contributors, CC BY-SA 4.0, launches through 24 November 2026. 67 successful launches with unknown or classified payload mass count as 0 kg.</desc>
  <style type="text/css">
  @media (prefers-color-scheme: dark) {
   #sg-fig-bg > path, #sg-axes-bg > path { fill: #0d1117 !important }
@@ -2235,8 +2235,8 @@ L 573.155536 168.324857
 L 573.155536 165.524766 
 L 593.700283 165.524766 
 L 593.700283 157.588921 
-L 615.825395 157.588921 
-L 615.825395 157.588921 
+L 617.40576 157.588921 
+L 617.40576 157.588921 
 " clip-path="url(#p893a68f308)" style="fill: none; stroke: #e34948; stroke-width: 2.2; stroke-linecap: square"/>
    </g>
    <g id="patch_1">
@@ -2274,7 +2274,7 @@ z
 " style="stroke: #e34948"/>
     </defs>
     <g clip-path="url(#p893a68f308)">
-     <use xlink:href="#mf98ab1bdb6" x="615.825395" y="157.588921" style="fill: #e34948; stroke: #e34948"/>
+     <use xlink:href="#mf98ab1bdb6" x="617.40576" y="157.588921" style="fill: #e34948; stroke: #e34948"/>
     </g>
    </g>
    <g id="patch_5">
